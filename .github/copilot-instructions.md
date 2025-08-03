@@ -9,6 +9,29 @@ This is a modern web application built with:
 - **Firebase** - Backend services including Authentication, Firestore, and Storage
 - **Tailwind CSS** - Utility-first CSS framework
 
+## Design System & Styling Guidelines
+
+### Color Palette
+- **Primary Color**: `#5b3983` (Purple) - Main brand color
+- **Secondary Color**: `#ffffff` (White) - Secondary/contrast color
+- **Background**: Purple (`#5b3983`) for main pages
+- **Popup/Modal Background**: White with purple text
+
+### Typography
+- **Font Family**: Montserrat for all text elements
+- Use consistent font weights and sizes across the application
+
+### UI Components
+- **Buttons**: White background with border radius and box shadows
+- **Cards/Containers**: Use box shadows for depth and elevation
+- **Text on Purple Background**: Use white text
+- **Text on White Background**: Use purple text (`#5b3983`)
+
+### Visual Effects
+- Apply box shadows to interactive elements and containers
+- Use consistent border radius for modern appearance
+- Maintain proper contrast ratios for accessibility
+
 ## Development Guidelines
 
 ### Code Style
@@ -28,6 +51,8 @@ This is a modern web application built with:
 - Use proper TypeScript interfaces for props
 - Implement proper error handling for async operations
 - Use Tailwind CSS classes for styling
+- Follow the design system: purple (#5b3983) backgrounds, white text, Montserrat font
+- Apply box shadows and border radius to interactive elements
 
 ### State Management
 - Use React Context for global state (like authentication)
