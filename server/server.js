@@ -1,5 +1,5 @@
 const express = require('express');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ServerApiVersion } = require('mongodb');
 const cors = require('cors');
 
 const app = express();
@@ -19,29 +19,36 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB connection
-const uri = process.env.MONGODB_URI || 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/sigma-hq?retryWrites=true&w=majority';
+const uri = process.env.MONGODB_URI || 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 const dbName = 'sigma-hq';
 
 let db;
+let client;
 let isConnected = false;
+
+// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+const mongoClient = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  }
+});
 
 // Connect to MongoDB
 console.log('🔄 Attempting to connect to MongoDB...');
 console.log('URI:', uri.replace(/:[^@]*@/, ':***@')); // Hide password
 
-MongoClient.connect(uri, {
-  serverSelectionTimeoutMS: 30000,
-  connectTimeoutMS: 30000,
-  socketTimeoutMS: 0
-})
-  .then(client => {
+mongoClient.connect()
+  .then(() => {
     console.log('✅ Connected to MongoDB successfully!');
+    client = mongoClient;
     db = client.db(dbName);
     isConnected = true;
     
     // Test the connection
-    db.admin().ping().then(() => {
-      console.log('✅ MongoDB ping successful');
+    db.admin().command({ ping: 1 }).then(() => {
+      console.log('✅ MongoDB ping successful - Stable API working!');
     }).catch(err => {
       console.warn('⚠️  MongoDB ping failed:', err.message);
     });
@@ -54,12 +61,9 @@ MongoClient.connect(uri, {
     // Retry connection after 10 seconds
     setTimeout(() => {
       console.log('🔄 Retrying MongoDB connection...');
-      MongoClient.connect(uri, {
-        serverSelectionTimeoutMS: 30000,
-        connectTimeoutMS: 30000,
-        socketTimeoutMS: 0
-      }).then(client => {
+      mongoClient.connect().then(() => {
         console.log('✅ MongoDB retry connection successful!');
+        client = mongoClient;
         db = client.db(dbName);
         isConnected = true;
       }).catch(retryError => {
