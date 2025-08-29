@@ -19,24 +19,39 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB connection
-const uri = process.env.MONGODB_URI || 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/?ssl=true&authSource=admin&retryWrites=true&w=majority';
+const uri = process.env.MONGODB_URI || 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/sigma-hq?retryWrites=true&w=majority&tlsInsecure=true';
 const dbName = 'sigma-hq';
 
 let db;
 
 // Connect to MongoDB
 MongoClient.connect(uri, {
-  tls: true,
-  tlsAllowInvalidCertificates: true,
-  tlsAllowInvalidHostnames: true,
-  serverSelectionTimeoutMS: 5000,
-  connectTimeoutMS: 10000
+  tlsInsecure: true,
+  serverSelectionTimeoutMS: 10000,
+  connectTimeoutMS: 15000
 })
   .then(client => {
     console.log('✅ Connected to MongoDB');
     db = client.db(dbName);
   })
   .catch(error => console.error('❌ MongoDB connection error:', error));
+
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'Server running', 
+    mongodb: db ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'API running', 
+    mongodb: db ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // CRUD endpoints per ogni collezione
 
