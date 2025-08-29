@@ -19,13 +19,19 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB connection
-const uri = process.env.MONGODB_URI || 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/';
+const uri = process.env.MONGODB_URI || 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/?ssl=true&authSource=admin&retryWrites=true&w=majority';
 const dbName = 'sigma-hq';
 
 let db;
 
 // Connect to MongoDB
-MongoClient.connect(uri)
+MongoClient.connect(uri, {
+  ssl: true,
+  sslValidate: false,
+  sslCA: undefined,
+  serverSelectionTimeoutMS: 5000,
+  connectTimeoutMS: 10000
+})
   .then(client => {
     console.log('✅ Connected to MongoDB');
     db = client.db(dbName);
