@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const node_telegram_bot_api_1 = __importDefault(require("node-telegram-bot-api"));
 const mongodb_1 = require("mongodb");
 const cron = __importStar(require("node-cron"));
+const express_1 = __importDefault(require("express"));
 const dotenv = __importStar(require("dotenv"));
 dotenv.config();
 // MongoDB Configuration
@@ -543,6 +544,26 @@ connectToMongoDB().then(async () => {
     console.log('➕ Send /add to create a new recording day');
     // Load initial data
     await loadClientsAndUsers();
+});
+// Express server for Render Web Service (keeps bot alive)
+const app = (0, express_1.default)();
+const PORT = process.env.PORT || 10000;
+app.get('/', (req, res) => {
+    res.json({
+        status: 'Bot is running!',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString()
+    });
+});
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        bot: bot ? 'connected' : 'disconnected',
+        database: db ? 'connected' : 'disconnected'
+    });
+});
+app.listen(PORT, () => {
+    console.log(`🌐 Bot web service running on port ${PORT}`);
 });
 // Scheduled notifications - Every day at 8:00 AM
 cron.schedule('0 8 * * *', async () => {

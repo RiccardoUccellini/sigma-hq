@@ -1,6 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { MongoClient, Db, Collection } from 'mongodb';
 import * as cron from 'node-cron';
+import express from 'express';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -645,6 +646,30 @@ connectToMongoDB().then(async () => {
   
   // Load initial data
   await loadClientsAndUsers();
+});
+
+// Express server for Render Web Service (keeps bot alive)
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'Bot is running!', 
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    bot: bot ? 'connected' : 'disconnected',
+    database: db ? 'connected' : 'disconnected'
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`🌐 Bot web service running on port ${PORT}`);
 });
 
 // Scheduled notifications - Every day at 8:00 AM
