@@ -11,7 +11,8 @@ app.use(cors({
     'http://localhost:5174',
     'http://localhost:3000', 
     'https://hq.sigmadigitalagency.it',
-    'http://hq.sigmadigitalagency.it'
+    'http://hq.sigmadigitalagency.it',
+    'https://*.onrender.com'
   ],
   credentials: true
 }));
