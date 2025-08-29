@@ -42,7 +42,10 @@ const express_1 = __importDefault(require("express"));
 const dotenv = __importStar(require("dotenv"));
 dotenv.config();
 // Initialize Telegram Bot
-const bot = new node_telegram_bot_api_1.default(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+const bot = new node_telegram_bot_api_1.default(process.env.TELEGRAM_BOT_TOKEN, {
+    polling: false, // Disabilito polling per evitare conflitti
+    filepath: false
+});
 let chatId = null;
 // Session storage for form conversations
 const userSessions = {};
@@ -233,6 +236,11 @@ loadClientsAndUsers().then(() => {
 // Express server for Render Web Service (keeps bot alive)
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 10000;
+// Webhook endpoint for Telegram
+app.post('/webhook', (req, res) => {
+    bot.processUpdate(req.body);
+    res.sendStatus(200);
+});
 app.get('/', (req, res) => {
     res.json({
         status: 'Bot is running!',
@@ -250,8 +258,20 @@ app.get('/health', (req, res) => {
         users: availableUsers.length
     });
 });
-app.listen(PORT, () => {
+// Set webhook on startup
+app.listen(PORT, async () => {
     console.log(`🌐 Bot web service running on port ${PORT}`);
+    try {
+        const webhookUrl = `https://sigma-hq-bot.onrender.com/webhook`;
+        await bot.setWebHook(webhookUrl);
+        console.log(`🔗 Webhook set to: ${webhookUrl}`);
+    }
+    catch (error) {
+        console.error('❌ Error setting webhook:', error);
+        // Fallback to polling if webhook fails
+        console.log('🔄 Falling back to polling...');
+        bot.startPolling();
+    }
 });
 // Scheduled notifications - Every day at 8:00 AM
 cron.schedule('0 8 * * *', async () => {

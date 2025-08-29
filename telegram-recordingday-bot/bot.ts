@@ -6,7 +6,10 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 // Initialize Telegram Bot
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, { polling: true });
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, { 
+  polling: false,  // Disabilito polling per evitare conflitti
+  filepath: false
+});
 
 let chatId: number | null = null;
 
@@ -264,6 +267,12 @@ loadClientsAndUsers().then(() => {
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// Webhook endpoint for Telegram
+app.post('/webhook', (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
 app.get('/', (req, res) => {
   res.json({ 
     status: 'Bot is running!', 
@@ -283,8 +292,20 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+// Set webhook on startup
+app.listen(PORT, async () => {
   console.log(`🌐 Bot web service running on port ${PORT}`);
+  
+  try {
+    const webhookUrl = `https://sigma-hq-bot.onrender.com/webhook`;
+    await bot.setWebHook(webhookUrl);
+    console.log(`🔗 Webhook set to: ${webhookUrl}`);
+  } catch (error) {
+    console.error('❌ Error setting webhook:', error);
+    // Fallback to polling if webhook fails
+    console.log('🔄 Falling back to polling...');
+    bot.startPolling();
+  }
 });
 
 // Scheduled notifications - Every day at 8:00 AM
