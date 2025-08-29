@@ -43,7 +43,7 @@ const dotenv = __importStar(require("dotenv"));
 dotenv.config();
 // Initialize Telegram Bot
 const bot = new node_telegram_bot_api_1.default(process.env.TELEGRAM_BOT_TOKEN, {
-    polling: true, // Attivo polling per test
+    polling: false, // Webhook per produzione, polling per locale
     filepath: false
 });
 let chatId = null;
