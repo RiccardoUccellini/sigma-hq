@@ -60,15 +60,17 @@ let availableUsers: any[] = [];
 // Load clients and users from backend
 async function loadClientsAndUsers() {
   try {
+    const API_URL = process.env.API_URL || 'http://localhost:3001/api';
+    
     // Load active clients
-    const clientsResponse = await fetch('http://localhost:3001/api/clients/active');
+    const clientsResponse = await fetch(`${API_URL}/clients/active`);
     if (clientsResponse.ok) {
       availableClients = await clientsResponse.json() as any[];
       console.log(`📊 Loaded ${availableClients.length} active clients`);
     }
 
     // Load users  
-    const usersResponse = await fetch('http://localhost:3001/api/users');
+    const usersResponse = await fetch(`${API_URL}/users`);
     if (usersResponse.ok) {
       availableUsers = await usersResponse.json() as any[];
       console.log(`👥 Loaded ${availableUsers.length} users`);
@@ -601,7 +603,8 @@ async function createNewRecording(chatId: string, formData: NewRecordingForm) {
     
     console.log('📝 Creating new recording via bot:', recordingData.title);
     
-    const response = await fetch('http://localhost:3001/api/recording-days', {
+    const API_URL = process.env.API_URL || 'http://localhost:3001/api';
+    const response = await fetch(`${API_URL}/recording-days`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
