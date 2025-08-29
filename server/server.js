@@ -23,6 +23,7 @@ const uri = process.env.MONGODB_URI || 'mongodb+srv://Riccardo:ru2023.CP@cluster
 const dbName = 'sigma-hq';
 
 let db;
+let isConnected = false;
 
 // Connect to MongoDB
 MongoClient.connect(uri, {
@@ -33,14 +34,29 @@ MongoClient.connect(uri, {
   .then(client => {
     console.log('✅ Connected to MongoDB');
     db = client.db(dbName);
+    isConnected = true;
   })
-  .catch(error => console.error('❌ MongoDB connection error:', error));
+  .catch(error => {
+    console.error('❌ MongoDB connection error:', error);
+    isConnected = false;
+  });
+
+// Middleware to check MongoDB connection
+const checkDbConnection = (req, res, next) => {
+  if (!isConnected || !db) {
+    return res.status(503).json({ 
+      error: 'Database connection not available',
+      status: 'MongoDB disconnected'
+    });
+  }
+  next();
+};
 
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({ 
     status: 'Server running', 
-    mongodb: db ? 'connected' : 'disconnected',
+    mongodb: isConnected ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString()
   });
 });
@@ -48,7 +64,7 @@ app.get('/', (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'API running', 
-    mongodb: db ? 'connected' : 'disconnected',
+    mongodb: isConnected ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString()
   });
 });
@@ -56,7 +72,7 @@ app.get('/api/health', (req, res) => {
 // CRUD endpoints per ogni collezione
 
 // CLIENTS
-app.get('/api/clients', async (req, res) => {
+app.get('/api/clients', checkDbConnection, async (req, res) => {
   try {
     const clients = await db.collection('clients').find({}).toArray();
     res.json(clients);
@@ -98,7 +114,7 @@ app.delete('/api/clients/:id', async (req, res) => {
 });
 
 // RECORDING DAYS
-app.get('/api/recording-days', async (req, res) => {
+app.get('/api/recording-days', checkDbConnection, async (req, res) => {
   try {
     const recordingDays = await db.collection('recordingDays').find({}).toArray();
     console.log(`📊 Found ${recordingDays.length} recording days in DB`);
@@ -239,7 +255,8 @@ app.post('/api/brain-dump-notes', async (req, res) => {
 });
 
 // USERS (for authentication management)
-app.get('/api/users', async (req, res) => {
+// USERS
+app.get('/api/users', checkDbConnection, async (req, res) => {
   try {
     const users = await db.collection('users').find({}).toArray();
     console.log(`👥 Found ${users.length} users in DB`);
