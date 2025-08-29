@@ -26,9 +26,9 @@ let db;
 
 // Connect to MongoDB
 MongoClient.connect(uri, {
-  ssl: true,
-  sslValidate: false,
-  sslCA: undefined,
+  tls: true,
+  tlsAllowInvalidCertificates: true,
+  tlsAllowInvalidHostnames: true,
   serverSelectionTimeoutMS: 5000,
   connectTimeoutMS: 10000
 })
