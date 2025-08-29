@@ -1,3 +1,41 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Global Scrollbar Styles - Thin white scrollbar with purple border */
+/* For WebKit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: white;
+  border: 1px solid #5b3983;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #f5f5f5;
+  border-color: #7b5a9e;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* For Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: white #5b3983;
+}
+
+/* Ensure scrollbar is visible on all elements */
+html, body, div, textarea, .overflow-auto, .overflow-y-auto, .overflow-x-auto {
+  scrollbar-width: thin;
+  scrollbar-color: white #5b3983;
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query } from '../lib/mongodb';
+import { db } from '../lib/mongodb';
 import HamburgerMenu from './HamburgerMenu';
 import bianco5Image from '../assets/bianco_5.png';
 import './Clients.css';
@@ -45,19 +45,21 @@ export default function Clients({ onNavigate }: ClientsProps) {
 
   const loadClients = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'clients'));
+      const clientsRef = collection(db, 'clients');
+      const q = query(clientsRef);
+      const querySnapshot = await getDocs(q);
       const clientsData: Client[] = [];
       
-      querySnapshot.forEach((doc) => {
+      querySnapshot.docs.forEach((doc: any) => {
         const data = doc.data();
         clientsData.push({
           id: doc.id,
           nameCompany: data.nameCompany,
-          startDate: data.startDate.toDate(),
+          startDate: data.startDate instanceof Date ? data.startDate : new Date(data.startDate),
           isActive: data.isActive,
           clientType: data.clientType,
-          endDate: data.endDate ? data.endDate.toDate() : undefined,
-          createdAt: data.createdAt.toDate()
+          endDate: data.endDate ? (data.endDate instanceof Date ? data.endDate : new Date(data.endDate)) : undefined,
+          createdAt: data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt)
         });
       });
       
@@ -91,9 +93,9 @@ export default function Clients({ onNavigate }: ClientsProps) {
       
       const clientData: any = {
         nameCompany: formData.nameCompany,
-        startDate: Timestamp.fromDate(new Date(formData.startDate)),
+        startDate: new Date(formData.startDate),
         isActive: formData.isActive,
-        createdAt: Timestamp.fromDate(new Date())
+        createdAt: new Date()
       };
       
       // Only add optional fields if they have values
@@ -102,14 +104,14 @@ export default function Clients({ onNavigate }: ClientsProps) {
       }
       
       if (formData.endDate) {
-        clientData.endDate = Timestamp.fromDate(new Date(formData.endDate));
+        clientData.endDate = new Date(formData.endDate);
       }
       
       console.log('Adding client:', clientData);
       await addDoc(collection(db, 'clients'), clientData);
       console.log('Client added successfully');
       
-      // Reload clients from Firestore
+      // Reload clients from MongoDB
       await loadClients();
       
       // Reset form
@@ -193,7 +195,7 @@ export default function Clients({ onNavigate }: ClientsProps) {
       
       const clientData: any = {
         nameCompany: formData.nameCompany,
-        startDate: Timestamp.fromDate(new Date(formData.startDate)),
+        startDate: new Date(formData.startDate),
         isActive: formData.isActive,
       };
       
@@ -203,12 +205,12 @@ export default function Clients({ onNavigate }: ClientsProps) {
       }
       
       if (formData.endDate) {
-        clientData.endDate = Timestamp.fromDate(new Date(formData.endDate));
+        clientData.endDate = new Date(formData.endDate);
       }
       
       await updateDoc(doc(db, 'clients', editingClient.id), clientData);
       
-      // Reload clients from Firestore
+      // Reload clients from MongoDB
       await loadClients();
       
       // Reset form

@@ -57,8 +57,14 @@ export default function HamburgerMenu({ onNavigate }: HamburgerMenuProps) {
               <button className="menu-item" onClick={() => handleNavigation('dashboard')}>
                 Dashboard
               </button>
+              <button className="menu-item" onClick={() => handleNavigation('client-management')}>
+                Client Management
+              </button>
               <button className="menu-item" onClick={() => handleNavigation('clients')}>
                 Clients
+              </button>
+              <button className="menu-item" onClick={() => handleNavigation('registrations')}>
+                Recording Day
               </button>
               <button className="menu-item" onClick={() => handleNavigation('settings')}>
                 Settings

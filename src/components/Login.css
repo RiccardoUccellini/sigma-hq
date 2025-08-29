@@ -86,7 +86,7 @@ html, body {
 }
 
 .login-input {
-  width: 90%;
+  width: 100%;
   padding: 0.75rem 1rem;
   border-radius: 0.75rem;
   border: 1px solid rgba(255,255,255,0.3);

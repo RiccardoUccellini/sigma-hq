@@ -1,8 +1,13 @@
-import { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, query, orderBy } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, addDoc, query, orderBy, doc, updateDoc, deleteDoc } from '../lib/mongodb';
+import { db } from '../lib/mongodb';
 import { useAuth } from '../contexts/AuthContext';
 import HamburgerMenu from './HamburgerMenu';
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
+// Dynamically imported to avoid compatibility issues
+// Modern markdown editor with React 19 support
+// import MDEditor from '@uiw/react-md-editor';
 import bianco5Image from '../assets/bianco_5.png';
 import typeBiancaImage from '../assets/type bianca.png';
 import videoIcon from '../assets/video-svgrepo-com.svg';
@@ -46,6 +51,49 @@ interface BrainDumpNote {
   updatedAt: Date;
 }
 
+interface RecordingDay {
+  id: string;
+  title: string;
+  client: string;
+  clientId: string;
+  date: Date | null;
+  startTime: string;
+  endTime: string;
+  location: string;
+  notes: string;
+  status: 'complete' | 'scheduled' | 'not-scheduled' | 'incomplete';
+  script?: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ScriptVideo {
+  id: string;
+  name: string;
+  description: string;
+  isEdited: boolean;
+}
+
+interface Script {
+  id: string;
+  clientId: string;
+  recordingDayId: string;
+  name: string;
+  content?: string;
+  videos: ScriptVideo[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface SocialMediaFollower {
+  id: string;
+  clientId: string;
+  platform: 'instagram' | 'tiktok' | 'linkedin' | 'youtube' | 'facebook';
+  followerCount: number;
+  month: string; // Format: "2025-08"
+  createdAt: Date;
+}
+
 interface ClientManagementProps {
   onNavigate?: (page: string) => void;
 }
@@ -55,12 +103,21 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
   const [clients, setClients] = useState<Client[]>([]);
   const [pedEntries, setPedEntries] = useState<PEDEntry[]>([]);
   const [brainDumpNotes, setBrainDumpNotes] = useState<BrainDumpNote[]>([]);
+  const [recordingDays, setRecordingDays] = useState<RecordingDay[]>([]);
+  const [scripts, setScripts] = useState<Script[]>([]);
+  const [socialMediaFollowers, setSocialMediaFollowers] = useState<SocialMediaFollower[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  
+  // Client filtering and search states
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [clientStatusFilter, setClientStatusFilter] = useState('all'); // 'all', 'active', 'prospective'
+  
   const [showPedForm, setShowPedForm] = useState(false);
   const [showPedManagement, setShowPedManagement] = useState(false);
   const [showBrainDumpForm, setShowBrainDumpForm] = useState(false);
+  const [showScriptForm, setShowScriptForm] = useState(false);
   const [editingBrainDumpNote, setEditingBrainDumpNote] = useState<string | null>(null);
   const [selectedBrainDumpNotes, setSelectedBrainDumpNotes] = useState<string[]>([]);
   const [brainDumpDateFilterFrom, setBrainDumpDateFilterFrom] = useState('');
@@ -72,6 +129,9 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
   const [pedDateFilterFrom, setPedDateFilterFrom] = useState('');
   const [pedDateFilterTo, setPedDateFilterTo] = useState('');
   const [pedSearchQuery, setPedSearchQuery] = useState('');
+  const [recStatusFilter, setRecStatusFilter] = useState('all');
+  const [recDateFilterFrom, setRecDateFilterFrom] = useState('');
+  const [recDateFilterTo, setRecDateFilterTo] = useState('');
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportDateFrom, setExportDateFrom] = useState('');
   const [exportDateTo, setExportDateTo] = useState('');
@@ -88,29 +148,52 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
     hashtags: '',
     dropboxLink: ''
   });
+  const [scriptFormData, setScriptFormData] = useState({
+    name: '',
+    recordingDayId: '',
+    videos: [] as ScriptVideo[]
+  });
+  const [editingScript, setEditingScript] = useState<string | null>(null);
+  const [expandedScripts, setExpandedScripts] = useState<Set<string>>(new Set());
+  const [showSocialMediaForm, setShowSocialMediaForm] = useState(false);
+  const [socialMediaFormData, setSocialMediaFormData] = useState({
+    month: new Date().toISOString().slice(0, 7), // Current month in YYYY-MM format
+    instagram: '',
+    tiktok: '',
+    linkedin: '',
+    youtube: '',
+    facebook: ''
+  });
+  const [chartMonthsFilter, setChartMonthsFilter] = useState(6);
+  const [showSocialMediaDataManagement, setShowSocialMediaDataManagement] = useState(false);
 
   // Load clients from Firestore
   useEffect(() => {
     loadClients();
     loadPedEntries();
     loadBrainDumpNotes();
+    loadRecordingDays();
+    loadScripts();
+    loadSocialMediaFollowers();
   }, []);
 
   const loadClients = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'clients'));
+      const clientsRef = collection(db, 'clients');
+      const q = query(clientsRef);
+      const querySnapshot = await getDocs(q);
       const clientsData: Client[] = [];
       
-      querySnapshot.forEach((doc) => {
+      querySnapshot.docs.forEach((doc: any) => {
         const data = doc.data();
         clientsData.push({
           id: doc.id,
           nameCompany: data.nameCompany,
-          startDate: data.startDate.toDate(),
+          startDate: data.startDate instanceof Date ? data.startDate : new Date(data.startDate),
           isActive: data.isActive,
           clientType: data.clientType,
-          endDate: data.endDate ? data.endDate.toDate() : undefined,
-          createdAt: data.createdAt.toDate()
+          endDate: data.endDate ? (data.endDate instanceof Date ? data.endDate : new Date(data.endDate)) : undefined,
+          createdAt: data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt)
         });
       });
       
@@ -129,7 +212,7 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
       );
       const pedData: PEDEntry[] = [];
       
-      querySnapshot.forEach((doc) => {
+      querySnapshot.docs.forEach((doc: any) => {
         const data = doc.data();
         pedData.push({
           id: doc.id,
@@ -141,7 +224,7 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
           copy: data.copy,
           hashtags: data.hashtags,
           dropboxLink: data.dropboxLink,
-          createdAt: data.createdAt.toDate()
+          createdAt: data.createdAt
         });
       });
       
@@ -158,15 +241,15 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
       );
       const notesData: BrainDumpNote[] = [];
       
-      querySnapshot.forEach((doc) => {
+      querySnapshot.docs.forEach((doc: any) => {
         const data = doc.data();
         notesData.push({
           id: doc.id,
           clientId: data.clientId,
           title: data.title,
           content: data.content,
-          createdAt: data.createdAt.toDate(),
-          updatedAt: data.updatedAt.toDate()
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt
         });
       });
       
@@ -178,11 +261,120 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
     }
   };
 
-  // Filter to show only active and prospective clients
+  const loadRecordingDays = async () => {
+    try {
+      const querySnapshot = await getDocs(
+        query(collection(db, 'recordingDays'), orderBy('updatedAt', 'desc'))
+      );
+      const recordingDaysData: RecordingDay[] = [];
+      
+      querySnapshot.docs.forEach((doc: any) => {
+        const data = doc.data();
+        recordingDaysData.push({
+          id: doc.id,
+          title: data.title,
+          client: data.client,
+          clientId: data.clientId,
+          date: data.date ? (data.date instanceof Date ? data.date : new Date(data.date)) : null,
+          startTime: data.startTime,
+          endTime: data.endTime,
+          location: data.location,
+          notes: data.notes,
+          status: data.status,
+          script: data.script,
+          createdAt: data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt || Date.now()),
+          updatedAt: data.updatedAt instanceof Date ? data.updatedAt : new Date(data.updatedAt || Date.now())
+        });
+      });
+      
+      setRecordingDays(recordingDaysData);
+    } catch (error) {
+      console.warn('Recording days collection might not exist yet:', error);
+      // Initialize with empty array if collection doesn't exist
+      setRecordingDays([]);
+    }
+  };
+
+  const loadScripts = async () => {
+    try {
+      const querySnapshot = await getDocs(
+        query(collection(db, 'scripts'), orderBy('updatedAt', 'desc'))
+      );
+      const scriptsData: Script[] = [];
+      
+      querySnapshot.docs.forEach((doc: any) => {
+        const data = doc.data();
+        scriptsData.push({
+          id: doc.id,
+          clientId: data.clientId,
+          recordingDayId: data.recordingDayId,
+          name: data.name,
+          content: data.content || '',
+          videos: data.videos || [],
+          createdAt: data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt || Date.now()),
+          updatedAt: data.updatedAt instanceof Date ? data.updatedAt : new Date(data.updatedAt || Date.now())
+        });
+      });
+      
+      setScripts(scriptsData);
+    } catch (error) {
+      console.warn('Scripts collection might not exist yet:', error);
+      // Initialize with empty array if collection doesn't exist
+      setScripts([]);
+    }
+  };
+
+  const loadSocialMediaFollowers = async () => {
+    try {
+      const querySnapshot = await getDocs(
+        query(collection(db, 'socialMediaFollowers'), orderBy('month', 'desc'))
+      );
+      const followersData: SocialMediaFollower[] = [];
+      
+      querySnapshot.docs.forEach((doc: any) => {
+        const data = doc.data();
+        followersData.push({
+          id: doc.id,
+          clientId: data.clientId,
+          platform: data.platform,
+          followerCount: data.followerCount,
+          month: data.month,
+          createdAt: data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt || Date.now())
+        });
+      });
+      
+      setSocialMediaFollowers(followersData);
+    } catch (error) {
+      console.warn('Social media followers collection might not exist yet:', error);
+      // Initialize with empty array if collection doesn't exist
+      setSocialMediaFollowers([]);
+    }
+  };
+
+  // Filter clients based on search query and status filter
   const getFilteredClients = () => {
-    return clients.filter(client => {
+    let filtered = clients.filter(client => {
       return client.isActive || (!client.isActive && client.clientType === 'prospective');
     });
+
+    // Apply search filter
+    if (clientSearchQuery.trim()) {
+      const searchLower = clientSearchQuery.toLowerCase().trim();
+      filtered = filtered.filter(client => 
+        client.nameCompany.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Apply status filter
+    if (clientStatusFilter !== 'all') {
+      if (clientStatusFilter === 'active') {
+        filtered = filtered.filter(client => client.isActive);
+      } else if (clientStatusFilter === 'prospective') {
+        filtered = filtered.filter(client => !client.isActive && client.clientType === 'prospective');
+      }
+    }
+
+    return filtered;
   };
 
   // Get upcoming PED entries for the selected client (next 3 releases)
@@ -594,11 +786,734 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
     doc.save(filename);
   };
 
+  // Script Management Functions
+  const openScriptForm = () => {
+    setShowScriptForm(true);
+    setScriptFormData({ name: '', recordingDayId: '', videos: [] });
+    setEditingScript(null);
+  };
+
+  const closeScriptForm = () => {
+    setShowScriptForm(false);
+    setScriptFormData({ name: '', recordingDayId: '', videos: [] });
+    setEditingScript(null);
+  };
+
+  const handleScriptFormChange = (field: string, value: string) => {
+    setScriptFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const getFilteredScripts = () => {
+    if (!selectedClient) return [];
+    return scripts.filter(script => script.clientId === selectedClient.id);
+  };
+
+  const getRecordingDaysForClient = () => {
+    if (!selectedClient) return [];
+    return recordingDays.filter(day => day.clientId === selectedClient.id);
+  };
+
+  const submitScriptForm = async () => {
+    if (!selectedClient) return;
+    
+    // Check if user is authenticated
+    if (!currentUser) {
+      alert('You must be logged in to create/edit scripts.');
+      return;
+    }
+    
+    try {
+      // Validate form data
+      if (!scriptFormData.name.trim()) {
+        alert('Please enter a script name.');
+        return;
+      }
+
+      if (!scriptFormData.recordingDayId) {
+        alert('Please select a recording day for this script.');
+        return;
+      }
+
+      const now = new Date();
+      
+      if (editingScript) {
+        // Update existing script
+        const updatedData = {
+          name: scriptFormData.name.trim(),
+          videos: scriptFormData.videos,
+          updatedAt: now
+        };
+
+        // Update in Firebase
+        await updateDoc(doc(db, 'scripts', editingScript), updatedData);
+
+        // Update local state
+        setScripts(prev => prev.map(script => 
+          script.id === editingScript 
+            ? { ...script, ...updatedData }
+            : script
+        ));
+
+        alert('Script updated successfully!');
+        closeScriptForm();
+      } else {
+        // Create new script
+        const scriptData = {
+          clientId: selectedClient.id,
+          recordingDayId: scriptFormData.recordingDayId,
+          name: scriptFormData.name.trim(),
+          videos: scriptFormData.videos,
+          createdAt: now,
+          updatedAt: now,
+          userId: currentUser.id
+        };
+
+        console.log('Saving new script to Firebase...');
+        const docRef = await addDoc(collection(db, 'scripts'), scriptData);
+        
+        // Create the script with the real Firebase ID
+        const newScript: Script = {
+          id: docRef.id,
+          clientId: selectedClient.id,
+          recordingDayId: scriptFormData.recordingDayId,
+          name: scriptFormData.name.trim(),
+          content: '', // Empty content since we removed the textarea
+          videos: scriptFormData.videos,
+          createdAt: now,
+          updatedAt: now
+        };
+
+        // Add to local state
+        setScripts(prev => [newScript, ...prev]);
+        
+        // Find the recording day to check if it has a date
+        const recordingDay = recordingDays.find(day => day.id === scriptFormData.recordingDayId);
+        
+        // Prepare update data - always set script to true
+        const updateData: any = {
+          script: true,
+          updatedAt: now
+        };
+        
+        // If the recording day has a date, also set status to complete
+        if (recordingDay && recordingDay.date) {
+          updateData.status = 'complete';
+        }
+        
+        // Update the recording day's script status to true (and possibly status to complete)
+        await updateDoc(doc(db, 'recordingDays', scriptFormData.recordingDayId), updateData);
+        
+        // Update local recording days state
+        setRecordingDays(prev => prev.map(day => 
+          day.id === scriptFormData.recordingDayId 
+            ? { 
+                ...day, 
+                script: true, 
+                status: (day.date ? 'complete' : day.status), 
+                updatedAt: now 
+              }
+            : day
+        ));
+        
+        console.log('Script saved to Firebase with ID:', docRef.id);
+        alert('Script created and assigned to recording day successfully!');
+        closeScriptForm();
+      }
+    } catch (error) {
+      console.error('Error saving script:', error);
+      alert('Error saving script. Please try again.');
+    }
+  };
+
+  const handleDeleteScript = async (script: Script) => {
+    if (window.confirm(`Are you sure you want to delete "${script.name}"? This action cannot be undone.`)) {
+      try {
+        // Delete from Firebase
+        await deleteDoc(doc(db, 'scripts', script.id));
+        
+        // Remove from local state
+        setScripts(prev => prev.filter(s => s.id !== script.id));
+        
+        // Check if this was the only script for this recording day
+        const otherScriptsForDay = scripts.filter(s => 
+          s.recordingDayId === script.recordingDayId && s.id !== script.id
+        );
+        
+        // If no other scripts exist for this recording day, set script to false
+        if (otherScriptsForDay.length === 0) {
+          // Find the recording day to check its current status
+          const recordingDay = recordingDays.find(day => day.id === script.recordingDayId);
+          
+          // Prepare update data - always set script to false
+          const updateData: any = {
+            script: false,
+            updatedAt: new Date()
+          };
+          
+          // If the recording day was marked as complete and has a date, revert to scheduled
+          if (recordingDay && recordingDay.status === 'complete' && recordingDay.date) {
+            updateData.status = 'scheduled';
+          }
+          
+          await updateDoc(doc(db, 'recordingDays', script.recordingDayId), updateData);
+          
+          // Update local recording days state
+          setRecordingDays(prev => prev.map(day => 
+            day.id === script.recordingDayId 
+              ? { 
+                  ...day, 
+                  script: false, 
+                  status: (day.status === 'complete' && day.date ? 'scheduled' : day.status),
+                  updatedAt: new Date() 
+                }
+              : day
+          ));
+        }
+        
+        alert('Script deleted successfully!');
+      } catch (error) {
+        console.error('Error deleting script:', error);
+        alert('Error deleting script. Please try again.');
+      }
+    }
+  };
+
+  // Video management functions for scripts
+  const addVideoToScript = () => {
+    const newVideo: ScriptVideo = {
+      id: `video_${Date.now()}`,
+      name: `Video ${scriptFormData.videos.length + 1}`,
+      description: '',
+      isEdited: false
+    };
+    
+    setScriptFormData(prev => ({
+      ...prev,
+      videos: [...prev.videos, newVideo]
+    }));
+  };
+
+  const removeVideoFromScript = (videoId: string) => {
+    setScriptFormData(prev => ({
+      ...prev,
+      videos: prev.videos.filter(video => video.id !== videoId)
+    }));
+  };
+
+  const updateVideoName = (videoId: string, newName: string) => {
+    setScriptFormData(prev => ({
+      ...prev,
+      videos: prev.videos.map(video => 
+        video.id === videoId ? { ...video, name: newName } : video
+      )
+    }));
+  };
+
+  const updateVideoDescription = (videoId: string, newDescription: string) => {
+    setScriptFormData(prev => ({
+      ...prev,
+      videos: prev.videos.map(video => 
+        video.id === videoId ? { ...video, description: newDescription } : video
+      )
+    }));
+  };
+
+  const toggleVideoEditedStatus = async (script: Script, videoId: string) => {
+    try {
+      const updatedVideos = script.videos.map(video => 
+        video.id === videoId ? { ...video, isEdited: !video.isEdited } : video
+      );
+
+      // Update in Firebase
+      await updateDoc(doc(db, 'scripts', script.id), {
+        videos: updatedVideos,
+        updatedAt: new Date()
+      });
+
+      // Update local state
+      setScripts(prev => prev.map(s => 
+        s.id === script.id 
+          ? { ...s, videos: updatedVideos, updatedAt: new Date() }
+          : s
+      ));
+    } catch (error) {
+      console.error('Error updating video status:', error);
+      alert('Error updating video status. Please try again.');
+    }
+  };
+
+  const toggleScriptExpansion = (scriptId: string) => {
+    setExpandedScripts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(scriptId)) {
+        newSet.delete(scriptId);
+      } else {
+        newSet.add(scriptId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleEditScript = (script: Script) => {
+    setScriptFormData({
+      name: script.name,
+      recordingDayId: script.recordingDayId,
+      videos: script.videos.map(video => ({
+        ...video,
+        description: video.description || '' // Ensure description exists
+      }))
+    });
+    setEditingScript(script.id);
+    setShowScriptForm(true);
+  };
+
+  const handleExportScript = async (script: Script) => {
+    if (!selectedClient) return;
+    
+    try {
+      // Find the recording day this script is assigned to
+      const recordingDay = recordingDays.find(rd => rd.id === script.recordingDayId);
+      
+      // Dynamic import for PDF generation
+      const { jsPDF } = await import('jspdf');
+      
+      // Create PDF
+      const doc = new jsPDF('portrait', 'mm', 'a4');
+      const pageWidth = doc.internal.pageSize.width;
+      let yPosition = 30;
+
+      // Add purple background header
+      doc.setFillColor(91, 57, 131); // Purple
+      doc.rect(0, 0, pageWidth, 40, 'F');
+
+      try {
+        // Helper function to convert image to base64
+        const getImageBase64 = (imageSrc: string): Promise<string> => {
+          return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              ctx?.drawImage(img, 0, 0);
+              const dataURL = canvas.toDataURL('image/png');
+              resolve(dataURL);
+            };
+            img.onerror = reject;
+            img.src = imageSrc;
+          });
+        };
+
+        // Add bianco_5.png logo in top right corner
+        const logoBase64 = await getImageBase64(bianco5Image);
+        const logoWidth = 25;
+        const logoHeight = 15;
+        doc.addImage(logoBase64, 'PNG', pageWidth - logoWidth - 10, 12, logoWidth, logoHeight);
+      } catch (error) {
+        console.warn('Could not load logo image:', error);
+        // Fallback text
+        doc.setFontSize(10);
+        doc.setTextColor(255, 255, 255);
+        doc.text('SIGMA HQ', pageWidth - 25, 25, { align: 'right' });
+      }
+
+      // Title
+      doc.setFontSize(24);
+      doc.setTextColor(255, 255, 255); // White text
+      doc.text('Script Export', 20, 25);
+
+      // Reset text color for body content
+      doc.setTextColor(0, 0, 0);
+      yPosition = 60;
+
+      // Client Information
+      doc.setFontSize(16);
+      doc.setTextColor(91, 57, 131); // Purple text
+      doc.text(`Client: ${selectedClient.nameCompany}`, 20, yPosition);
+      yPosition += 15;
+
+      // Recording Day
+      const recordingDayText = recordingDay ? 
+        (recordingDay.date ? recordingDay.date.toLocaleDateString() : 'Not scheduled') : 
+        'Not assigned';
+      doc.setFontSize(14);
+      doc.setTextColor(0, 0, 0); // Black text
+      doc.text(`Recording Day: ${recordingDayText}`, 20, yPosition);
+      yPosition += 20;
+
+      // Video List
+      doc.setFontSize(14);
+      doc.setTextColor(91, 57, 131); // Purple text
+      doc.text('Video List:', 20, yPosition);
+      yPosition += 10;
+
+      // Videos
+      doc.setFontSize(12);
+      doc.setTextColor(0, 0, 0); // Black text
+      
+      if (script.videos.length > 0) {
+        script.videos.forEach((video, index) => {
+          // Video name
+          doc.text(`${index + 1}. ${video.name}`, 30, yPosition);
+          yPosition += 8;
+          
+          // Video description (if exists)
+          if (video.description && video.description.trim()) {
+            doc.setFontSize(10);
+            doc.setTextColor(80, 80, 80); // Dark gray
+            
+            // Split long descriptions into multiple lines
+            const maxLineWidth = 160; // Approximate character width for the page
+            const descriptionLines = doc.splitTextToSize(`   ${video.description}`, maxLineWidth);
+            
+            descriptionLines.forEach((line: string) => {
+              doc.text(line, 30, yPosition);
+              yPosition += 6;
+            });
+            
+            yPosition += 4; // Extra space after description
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0); // Reset to black
+          }
+        });
+      } else {
+        doc.setTextColor(120, 120, 120); // Gray text
+        doc.text('No videos in this script', 30, yPosition);
+      }
+
+      // Download PDF
+      doc.save(`${script.name}_${selectedClient.nameCompany}.pdf`);
+      
+    } catch (error) {
+      console.error('Error generating script PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    }
+  };
+
+  const getVideoEditingProgress = (videos: ScriptVideo[]) => {
+    const totalVideos = videos.length;
+    const editedVideos = videos.filter(video => video.isEdited).length;
+    return { edited: editedVideos, total: totalVideos };
+  };
+
+  // Social Media Followers Helper Functions
+  const getCurrentMonthFollowers = (clientId: string, platform: string) => {
+    if (!selectedClient) return null;
+    
+    // Get all follower data for this client and platform, sorted by month descending
+    const platformData = socialMediaFollowers
+      .filter(f => f.clientId === clientId && f.platform === platform)
+      .sort((a, b) => b.month.localeCompare(a.month)); // Sort by month descending (most recent first)
+    
+    // Return the most recent entry, or 0 if no data exists
+    return platformData.length > 0 ? platformData[0].followerCount : 0;
+  };
+
+  const getPreviousMonthFollowers = (clientId: string, platform: string) => {
+    if (!selectedClient) return null;
+    
+    // Get all follower data for this client and platform, sorted by month descending
+    const platformData = socialMediaFollowers
+      .filter(f => f.clientId === clientId && f.platform === platform)
+      .sort((a, b) => b.month.localeCompare(a.month)); // Sort by month descending (most recent first)
+    
+    // Return the second most recent entry, or 0 if no previous data exists
+    return platformData.length > 1 ? platformData[1].followerCount : 0;
+  };
+
+  const getFollowerGrowthPercentage = (clientId: string, platform: string) => {
+    const current = getCurrentMonthFollowers(clientId, platform);
+    const previous = getPreviousMonthFollowers(clientId, platform);
+    
+    // If no current data, return null
+    if (!current && current !== 0) return null;
+    
+    // If no previous data or previous is 0, return null (can't calculate percentage)
+    if (!previous || previous === 0) return null;
+    
+    const growth = ((current - previous) / previous) * 100;
+    return Math.round(growth * 10) / 10; // Round to 1 decimal place
+  };
+
+  const getSocialMediaIcon = (platform: string) => {
+    switch (platform) {
+      case 'instagram': return instagramIcon;
+      case 'tiktok': return tiktokIcon;
+      case 'linkedin': return linkedinIcon;
+      case 'youtube': return youtubeIcon;
+      case 'facebook': return facebookIcon;
+      default: return videoIcon;
+    }
+  };
+
+  const formatFollowerCount = (count: number) => {
+    if (count >= 1000000) {
+      return (count / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    } else if (count >= 10000) {
+      return (count / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    }
+    return count.toLocaleString();
+  };
+
+  const getLastMonthsData = (clientId: string, platform: string, months: number = 6) => {
+    if (!selectedClient) return [];
+    
+    // Get all follower data for this client and platform
+    const platformData = socialMediaFollowers
+      .filter(f => f.clientId === clientId && f.platform === platform)
+      .sort((a, b) => a.month.localeCompare(b.month)); // Sort by month ascending for chronological order
+    
+    // Get last N months of data
+    return platformData.slice(-months).map(entry => ({
+      month: entry.month,
+      followers: entry.followerCount
+    }));
+  };
+
+  // Social Media Form Functions
+  const openSocialMediaForm = () => {
+    setShowSocialMediaForm(true);
+    setSocialMediaFormData({
+      month: new Date().toISOString().slice(0, 7),
+      instagram: '',
+      tiktok: '',
+      linkedin: '',
+      youtube: '',
+      facebook: ''
+    });
+  };
+
+  const closeSocialMediaForm = () => {
+    setShowSocialMediaForm(false);
+    setSocialMediaFormData({
+      month: new Date().toISOString().slice(0, 7),
+      instagram: '',
+      tiktok: '',
+      linkedin: '',
+      youtube: '',
+      facebook: ''
+    });
+  };
+
+  // Social Media Data Management Functions
+  const openSocialMediaDataManagement = () => {
+    setShowSocialMediaDataManagement(true);
+  };
+
+  const closeSocialMediaDataManagement = () => {
+    setShowSocialMediaDataManagement(false);
+  };
+
+  const getClientSocialMediaData = () => {
+    if (!selectedClient) return {};
+    
+    const clientData = socialMediaFollowers.filter(f => f.clientId === selectedClient.id);
+    const groupedData: { [month: string]: { [platform: string]: number } } = {};
+    
+    clientData.forEach(data => {
+      if (!groupedData[data.month]) {
+        groupedData[data.month] = {};
+      }
+      groupedData[data.month][data.platform] = data.followerCount;
+    });
+    
+    return groupedData;
+  };
+
+  const handleEditSocialMediaData = async (month: string, platform: string, currentValue: number) => {
+    const newValue = prompt(`Enter new follower count for ${platform} in ${month}:`, currentValue.toString());
+    if (newValue === null) return; // User cancelled
+    
+    const numValue = parseInt(newValue);
+    if (isNaN(numValue) || numValue < 0) {
+      alert('Please enter a valid number');
+      return;
+    }
+    
+    try {
+      // Find the existing entry
+      const existingEntry = socialMediaFollowers.find(
+        f => f.clientId === selectedClient?.id && f.month === month && f.platform === platform
+      );
+
+      if (existingEntry) {
+        // Update in Firebase
+        await updateDoc(doc(db, 'socialMediaFollowers', existingEntry.id), {
+          followerCount: numValue,
+          updatedAt: new Date()
+        });
+
+        // Update in local state
+        setSocialMediaFollowers(prev => prev.map(f => 
+          f.id === existingEntry.id
+            ? { ...f, followerCount: numValue, updatedAt: new Date() }
+            : f
+        ));
+        
+        alert('Data updated successfully!');
+      }
+    } catch (error) {
+      console.error('Error updating social media data:', error);
+      alert('Error updating data. Please try again.');
+    }
+  };
+
+  const handleDeleteMonthData = async (month: string) => {
+    const confirmed = window.confirm(`Are you sure you want to delete ALL social media data for ${month}?`);
+    if (!confirmed) return;
+    
+    try {
+      // Find all entries for this month and client
+      const entriesToDelete = socialMediaFollowers.filter(
+        f => f.clientId === selectedClient?.id && f.month === month
+      );
+
+      // Delete from Firebase
+      const deletePromises = entriesToDelete.map(entry => 
+        deleteDoc(doc(db, 'socialMediaFollowers', entry.id))
+      );
+      await Promise.all(deletePromises);
+
+      // Remove from local state
+      setSocialMediaFollowers(prev => prev.filter(f => 
+        !(f.clientId === selectedClient?.id && f.month === month)
+      ));
+      
+      alert(`All data for ${month} deleted successfully!`);
+    } catch (error) {
+      console.error('Error deleting social media data:', error);
+      alert('Error deleting data. Please try again.');
+    }
+  };
+
+  const handleSocialMediaFormChange = (field: string, value: string) => {
+    setSocialMediaFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const submitSocialMediaForm = async () => {
+    if (!selectedClient) return;
+    
+    // Check if user is authenticated
+    if (!currentUser) {
+      alert('You must be logged in to add social media data.');
+      return;
+    }
+    
+    try {
+      // Validate form data
+      if (!socialMediaFormData.month) {
+        alert('Please select a month.');
+        return;
+      }
+
+      const platforms = ['instagram', 'tiktok', 'linkedin', 'youtube', 'facebook'];
+      const hasAnyData = platforms.some(platform => 
+        socialMediaFormData[platform as keyof typeof socialMediaFormData].trim() !== ''
+      );
+
+      if (!hasAnyData) {
+        alert('Please enter follower count for at least one platform.');
+        return;
+      }
+
+      // Check if data for this month already exists
+      const existingData = socialMediaFollowers.some(
+        f => f.clientId === selectedClient.id && f.month === socialMediaFormData.month
+      );
+
+      if (existingData) {
+        const confirmed = window.confirm(
+          `Data for ${socialMediaFormData.month} already exists. Do you want to update it?`
+        );
+        if (!confirmed) return;
+      }
+
+      const now = new Date();
+      const savedEntries: SocialMediaFollower[] = [];
+
+      // Save each platform's data separately
+      for (const platform of platforms) {
+        const followerCountStr = socialMediaFormData[platform as keyof typeof socialMediaFormData];
+        
+        if (followerCountStr.trim() !== '') {
+          const followerCount = parseInt(followerCountStr);
+          
+          if (isNaN(followerCount) || followerCount < 0) {
+            alert(`Please enter a valid number for ${platform} followers.`);
+            return;
+          }
+
+          // Check if entry exists for this platform and month
+          const existingEntry = socialMediaFollowers.find(
+            f => f.clientId === selectedClient.id && 
+                 f.platform === platform && 
+                 f.month === socialMediaFormData.month
+          );
+
+          if (existingEntry) {
+            // Update existing entry
+            await updateDoc(doc(db, 'socialMediaFollowers', existingEntry.id), {
+              followerCount,
+              updatedAt: now
+            });
+
+            // Update local state
+            setSocialMediaFollowers(prev => prev.map(f => 
+              f.id === existingEntry.id 
+                ? { ...f, followerCount, updatedAt: now }
+                : f
+            ));
+          } else {
+            // Create new entry
+            const followerData = {
+              clientId: selectedClient.id,
+              platform: platform as SocialMediaFollower['platform'],
+              followerCount,
+              month: socialMediaFormData.month,
+              createdAt: now,
+              userId: currentUser.id
+            };
+
+            const docRef = await addDoc(collection(db, 'socialMediaFollowers'), followerData);
+            
+            const newFollower: SocialMediaFollower = {
+              id: docRef.id,
+              ...followerData
+            };
+
+            savedEntries.push(newFollower);
+          }
+        }
+      }
+
+      // Add new entries to local state
+      if (savedEntries.length > 0) {
+        setSocialMediaFollowers(prev => [...savedEntries, ...prev]);
+      }
+
+      alert('Social media data saved successfully!');
+      closeSocialMediaForm();
+    } catch (error) {
+      console.error('Error saving social media data:', error);
+      alert('Error saving social media data. Please try again.');
+    }
+  };
+
   // Brain Dump Management Functions
   const openBrainDumpForm = () => {
+    console.log('Opening brain dump form...');
     setShowBrainDumpForm(true);
     setBrainDumpFormData({ title: '', content: '' });
     setEditingBrainDumpNote(null);
+    console.log('Brain dump form state set to:', true);
   };
 
   const closeBrainDumpForm = () => {
@@ -649,6 +1564,139 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
     
     // Sort by updated date (most recent first)
     return filtered.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  };
+
+  const getFilteredRecordingDays = () => {
+    if (!selectedClient) return [];
+    
+    let filtered = recordingDays.filter(day => day.clientId === selectedClient.id);
+    
+    // Filter by status
+    if (recStatusFilter !== 'all') {
+      if (recStatusFilter === 'scheduled') {
+        // Show both scheduled and complete when "scheduled" is selected
+        filtered = filtered.filter(day => day.status === 'scheduled' || day.status === 'complete');
+      } else if (recStatusFilter === 'incomplete') {
+        // "Incomplete" filter should show recordings with script: false or status incomplete
+        filtered = filtered.filter(day => day.status === 'incomplete' || !day.script);
+      } else if (recStatusFilter === 'complete') {
+        // "Complete" filter should show recordings that have both a date and a script
+        filtered = filtered.filter(day => day.date && day.script);
+      } else {
+        filtered = filtered.filter(day => day.status === recStatusFilter);
+      }
+    }
+    
+    // Filter by date range
+    if (recDateFilterFrom) {
+      const fromDate = new Date(recDateFilterFrom);
+      fromDate.setHours(0, 0, 0, 0);
+      
+      filtered = filtered.filter(day => {
+        if (!day.date) return false;
+        const dayDate = new Date(day.date);
+        dayDate.setHours(0, 0, 0, 0);
+        return dayDate >= fromDate;
+      });
+    }
+    
+    if (recDateFilterTo) {
+      const toDate = new Date(recDateFilterTo);
+      toDate.setHours(23, 59, 59, 999);
+      
+      filtered = filtered.filter(day => {
+        if (!day.date) return false;
+        const dayDate = new Date(day.date);
+        return dayDate <= toDate;
+      });
+    }
+    
+    // Sort by priority: 
+    // 1. Upcoming dates (scheduled and completed) - nearest first
+    // 2. Not scheduled (no date)
+    // 3. Past dates - most recent first
+    return filtered.sort((a, b) => {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0); // Start of today for comparison
+      
+      const aIsUpcoming = a.date && a.date >= now;
+      const bIsUpcoming = b.date && b.date >= now;
+      const aIsPast = a.date && a.date < now;
+      const bIsPast = b.date && b.date < now;
+      const aNoDate = !a.date;
+      const bNoDate = !b.date;
+      
+      // 1. Upcoming dates first (scheduled and completed)
+      if (aIsUpcoming && !bIsUpcoming) return -1;
+      if (bIsUpcoming && !aIsUpcoming) return 1;
+      if (aIsUpcoming && bIsUpcoming) {
+        // Both upcoming - sort by date (nearest first)
+        return a.date!.getTime() - b.date!.getTime();
+      }
+      
+      // 2. Not scheduled (no date) comes next
+      if (aNoDate && !bNoDate && !bIsUpcoming) return -1;
+      if (bNoDate && !aNoDate && !aIsUpcoming) return 1;
+      if (aNoDate && bNoDate) return 0;
+      
+      // 3. Past dates last (most recent first)
+      if (aIsPast && bIsPast) {
+        return b.date!.getTime() - a.date!.getTime(); // Most recent past date first
+      }
+      
+      // Past dates go to the bottom
+      if (aIsPast && !bIsPast) return 1;
+      if (bIsPast && !aIsPast) return -1;
+      
+      return 0;
+    });
+  };
+
+  const getStatusColor = (status: RecordingDay['status']) => {
+    switch (status) {
+      case 'scheduled': return '#ff9800'; // Orange
+      case 'complete': return '#4caf50'; // Green
+      case 'incomplete': return '#f44336'; // Red
+      case 'not-scheduled': return '#757575'; // Gray
+      default: return '#757575';
+    }
+  };
+
+  const handleDeleteRecordingDay = async (recordingDay: RecordingDay, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent any parent click events
+    
+    if (window.confirm(`Are you sure you want to delete "${recordingDay.title}"? This action cannot be undone.`)) {
+      try {
+        // Delete from Firebase
+        await deleteDoc(doc(db, 'recordingDays', recordingDay.id));
+        
+        // Remove from local state immediately for better UX
+        setRecordingDays(prev => prev.filter(day => day.id !== recordingDay.id));
+        
+        alert('Recording day deleted successfully!');
+      } catch (error) {
+        console.error('Error deleting recording day:', error);
+        alert('Error deleting recording day. Please try again.');
+        
+        // Reload recording days to restore state if deletion failed
+        loadRecordingDays();
+      }
+    }
+  };
+
+  const handleEditRecordingDay = (recordingDay: RecordingDay, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent any parent click events
+    
+    // Navigate to Registrations page - you can implement this based on your navigation setup
+    if (onNavigate) {
+      // Store the recording day ID in sessionStorage so the Registrations page can pick it up
+      sessionStorage.setItem('editRecordingDayId', recordingDay.id);
+      sessionStorage.setItem('editRecordingDayData', JSON.stringify(recordingDay));
+      onNavigate('registrations');
+    } else {
+      // Fallback: show alert with instruction
+      alert(`To edit "${recordingDay.title}", please navigate to the Recording Day Management page (Registrations).`);
+    }
   };
 
   const handleSelectBrainDumpNote = (noteId: string) => {
@@ -719,7 +1767,10 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
         return;
       }
 
-      if (!brainDumpFormData.content.trim()) {
+      // Check content
+      const contentToCheck = brainDumpFormData.content;
+        
+      if (!contentToCheck.trim()) {
         alert('Please enter some content for your note.');
         return;
       }
@@ -727,35 +1778,41 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
       const now = new Date();
       
       if (editingBrainDumpNote) {
-        // Update existing note - for now, just update local state
+        // Update existing note - Save to Firebase AND update local state
         const updatedNote = {
           title: brainDumpFormData.title.trim(),
           content: brainDumpFormData.content.trim(),
           updatedAt: now
         };
 
-        setBrainDumpNotes(prev => prev.map(note => 
-          note.id === editingBrainDumpNote 
-            ? { ...note, ...updatedNote }
-            : note
-        ));
-        
-        alert('Brain dump note updated successfully!');
+        try {
+          // Try to update in Firebase first
+          const noteRef = doc(db, 'brainDumpNotes', editingBrainDumpNote);
+          await updateDoc(noteRef, updatedNote);
+          
+          // If Firebase update succeeds, update local state
+          setBrainDumpNotes(prev => prev.map(note => 
+            note.id === editingBrainDumpNote 
+              ? { ...note, ...updatedNote }
+              : note
+          ));
+          
+          console.log('Brain dump note updated in Firebase:', editingBrainDumpNote);
+          alert('Brain dump note updated successfully!');
+        } catch (firebaseError) {
+          console.error('Failed to update note in Firebase:', firebaseError);
+          
+          // If Firebase fails, still update local state
+          setBrainDumpNotes(prev => prev.map(note => 
+            note.id === editingBrainDumpNote 
+              ? { ...note, ...updatedNote }
+              : note
+          ));
+          
+          alert('Brain dump note updated locally (Firebase sync failed)');
+        }
       } else {
-        // Create new note - for now, just add to local state with a temporary ID
-        const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const newNote: BrainDumpNote = {
-          id: tempId,
-          clientId: selectedClient.id,
-          title: brainDumpFormData.title.trim(),
-          content: brainDumpFormData.content.trim(),
-          createdAt: now,
-          updatedAt: now
-        };
-
-        setBrainDumpNotes(prev => [newNote, ...prev]);
-        
-        // Try to save to Firebase in the background
+        // Create new note - Save to Firebase first, then add to local state
         try {
           const noteData = {
             clientId: selectedClient.id,
@@ -763,25 +1820,51 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
             content: brainDumpFormData.content.trim(),
             createdAt: now,
             updatedAt: now,
-            userId: currentUser.uid
+            userId: currentUser.id
           };
 
+          console.log('Saving new brain dump note to Firebase...');
+          console.log('Note data:', noteData);
+          console.log('Current user:', currentUser?.id);
+          console.log('Selected client:', selectedClient.id);
+          
           const docRef = await addDoc(collection(db, 'brainDumpNotes'), noteData);
           
-          // Update the local state with the real Firebase ID
-          setBrainDumpNotes(prev => prev.map(note => 
-            note.id === tempId 
-              ? { ...note, id: docRef.id }
-              : note
-          ));
+          // Create the note with the real Firebase ID
+          const newNote: BrainDumpNote = {
+            id: docRef.id,
+            clientId: selectedClient.id,
+            title: brainDumpFormData.title.trim(),
+            content: brainDumpFormData.content.trim(),
+            createdAt: now,
+            updatedAt: now
+          };
+
+          // Add to local state with real Firebase ID
+          setBrainDumpNotes(prev => [newNote, ...prev]);
           
-          console.log('Brain dump note saved to Firebase:', docRef.id);
+          console.log('Brain dump note saved to Firebase with ID:', docRef.id);
+          alert('Brain dump note created and saved successfully!');
         } catch (firebaseError) {
-          console.warn('Failed to save to Firebase, keeping local copy:', firebaseError);
-          // Note stays in local state with temp ID
+          console.error('Failed to save new note to Firebase:', firebaseError);
+          
+          // Provide more specific error messages
+          let errorMessage = 'Error saving brain dump note to Firebase. ';
+          if (firebaseError instanceof Error) {
+            if (firebaseError.message.includes('permission-denied')) {
+              errorMessage += 'Permission denied. Please make sure you are logged in and have the correct permissions.';
+            } else if (firebaseError.message.includes('network')) {
+              errorMessage += 'Network error. Please check your internet connection.';
+            } else {
+              errorMessage += `Details: ${firebaseError.message}`;
+            }
+          } else {
+            errorMessage += 'Unknown error occurred.';
+          }
+          
+          alert(errorMessage);
+          return; // Don't close the form if save failed
         }
-        
-        alert('Brain dump note created successfully!');
       }
       
       closeBrainDumpForm();
@@ -817,7 +1900,7 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
         hashtags: pedFormData.hashtags,
         dropboxLink: pedFormData.dropboxLink,
         createdAt: new Date(),
-        userId: currentUser.uid // Add user ID for security
+        userId: currentUser.id // Add user ID for security
       };
 
       console.log('Saving PED entry for client:', selectedClient.id);
@@ -868,6 +1951,46 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
       {/* Main content */}
       <div className="client-management-content">
         <h1 className="client-management-title">Client Management</h1>
+        
+        {/* Client Filters and Search */}
+        <div className="client-filters-container">
+          <div className="client-search-box">
+            <input
+              type="text"
+              value={clientSearchQuery}
+              onChange={(e) => setClientSearchQuery(e.target.value)}
+              placeholder="Search clients by name..."
+              className="client-search-input"
+            />
+          </div>
+          
+          <select
+            value={clientStatusFilter}
+            onChange={(e) => setClientStatusFilter(e.target.value)}
+            className="client-status-filter"
+          >
+            <option value="all">All Clients</option>
+            <option value="active">Active Clients</option>
+            <option value="prospective">Prospective Clients</option>
+          </select>
+        </div>
+
+        {/* Results Counter */}
+        {(() => {
+          const filteredClients = getFilteredClients();
+          const totalClients = clients.filter(client => 
+            client.isActive || (!client.isActive && client.clientType === 'prospective')
+          ).length;
+          
+          if (clientSearchQuery.trim() || clientStatusFilter !== 'all') {
+            return (
+              <div className="clients-found-counter">
+                Showing {filteredClients.length} of {totalClients} clients
+              </div>
+            );
+          }
+          return null;
+        })()}
         
         {/* Clients Grid */}
         <div className="client-management-grid">
@@ -948,6 +2071,13 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
                 Scripts
               </button>
               <button 
+                className={`tab-btn ${activeTab === 'statistics' ? 'active' : ''}`}
+                onClick={() => setActiveTab('statistics')}
+              >
+                <span className="tab-icon">📈</span>
+                Statistics
+              </button>
+              <button 
                 className={`tab-btn ${activeTab === 'brain-dump' ? 'active' : ''}`}
                 onClick={() => setActiveTab('brain-dump')}
               >
@@ -960,14 +2090,283 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
             <div className="client-popup-content">
               {activeTab === 'overview' && (
                 <div className="tab-content">
-                  <h3>Client Overview</h3>
-                  <div className="overview-info">
-                    <p><strong>Name/Company:</strong> {selectedClient.nameCompany}</p>
-                    <p><strong>Start Date:</strong> {selectedClient.startDate.toLocaleDateString()}</p>
-                    <p><strong>Status:</strong> {selectedClient.isActive ? 'Active' : selectedClient.clientType}</p>
-                    {selectedClient.endDate && (
-                      <p><strong>End Date:</strong> {selectedClient.endDate.toLocaleDateString()}</p>
-                    )}
+                  <div className="overview-header">
+                    <h3>Client Overview</h3>
+                    <div className="overview-client-info">
+                      <span className="client-status-badge">
+                        {selectedClient.isActive ? '🟢 Active' : '🔶 ' + selectedClient.clientType}
+                      </span>
+                      <span className="client-start-date">
+                        Since {selectedClient.startDate.toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          year: 'numeric' 
+                        })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Modern 4-Box Grid Layout */}
+                  <div className="overview-dashboard">
+                    {/* Social Media Overview */}
+                    <div className="overview-card social-card">
+                      <div className="card-header">
+                        <div className="card-icon">📱</div>
+                        <h4>Social Media</h4>
+                      </div>
+                      <div className="card-content">
+                        <div className="social-overview-grid">
+                          {['instagram', 'tiktok', 'linkedin', 'youtube', 'facebook'].map((platform) => {
+                            const currentFollowers = getCurrentMonthFollowers(selectedClient.id, platform);
+                            const growthPercentage = getFollowerGrowthPercentage(selectedClient.id, platform);
+                            
+                            return (
+                              <div key={platform} className="social-platform-mini">
+                                <img src={getSocialMediaIcon(platform)} alt={platform} className="mini-platform-icon" />
+                                <div className="mini-follower-info">
+                                  <span className="mini-follower-count">{(currentFollowers || 0).toLocaleString()}</span>
+                                  {growthPercentage !== null && (
+                                    <span className={`mini-growth ${growthPercentage >= 0 ? 'positive' : 'negative'}`}>
+                                      {growthPercentage >= 0 ? '+' : ''}{growthPercentage}%
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Next Content Release */}
+                    <div className="overview-card content-card">
+                      <div className="card-header">
+                        <div className="card-icon">📋</div>
+                        <h4>Next Content</h4>
+                      </div>
+                      <div className="card-content">
+                        {(() => {
+                          const clientPedEntries = pedEntries.filter(entry => entry.clientId === selectedClient.id);
+                          const upcomingEntries = clientPedEntries
+                            .filter(entry => new Date(entry.releaseDate) >= new Date())
+                            .sort((a, b) => new Date(a.releaseDate).getTime() - new Date(b.releaseDate).getTime());
+                          
+                          if (upcomingEntries.length === 0) {
+                            return (
+                              <div className="card-empty">
+                                <span className="empty-icon">📅</span>
+                                <p>No upcoming content</p>
+                              </div>
+                            );
+                          }
+
+                          const nextEntry = upcomingEntries[0];
+                          const daysUntil = Math.ceil((new Date(nextEntry.releaseDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                          
+                          return (
+                            <div className="card-data">
+                              <div className="main-info">
+                                <h5>{nextEntry.publicationName}</h5>
+                                <div className="date-info">
+                                  <span className="date">
+                                    {new Date(nextEntry.releaseDate).toLocaleDateString('en-US', {
+                                      month: 'long',
+                                      day: 'numeric',
+                                      year: 'numeric'
+                                    })}
+                                  </span>
+                                  <span className="countdown">
+                                    {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="platforms">
+                                {nextEntry.platforms.slice(0, 3).map((platform, index) => (
+                                  <span key={index} className="platform-chip">{platform}</span>
+                                ))}
+                                {nextEntry.platforms.length > 3 && (
+                                  <span className="platform-chip more">+{nextEntry.platforms.length - 3}</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Next Recording Day */}
+                    <div className="overview-card recording-card">
+                      <div className="card-header">
+                        <div className="card-icon">🎬</div>
+                        <h4>Next Recording</h4>
+                      </div>
+                      <div className="card-content">
+                        {(() => {
+                          const clientRecordings = recordingDays.filter(r => r.clientId === selectedClient.id);
+                          const upcomingRecordings = clientRecordings
+                            .filter(r => r.date && r.date >= new Date())
+                            .sort((a, b) => a.date!.getTime() - b.date!.getTime());
+                          
+                          if (upcomingRecordings.length === 0) {
+                            return (
+                              <div className="card-empty">
+                                <span className="empty-icon">🎥</span>
+                                <p>No upcoming recordings</p>
+                              </div>
+                            );
+                          }
+
+                          const nextRecording = upcomingRecordings[0];
+                          const daysUntil = Math.ceil((nextRecording.date!.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                          
+                          return (
+                            <div className="card-data">
+                              <div className="main-info">
+                                <div className="date-info">
+                                  <span className="date">
+                                    {nextRecording.date!.toLocaleDateString('en-US', {
+                                      month: 'long',
+                                      day: 'numeric',
+                                      year: 'numeric'
+                                    })}
+                                  </span>
+                                  <span className="countdown">
+                                    {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="recording-details">
+                                <span className="time">
+                                  {nextRecording.startTime === 'All Day' ? '🕐 All Day' : `🕐 ${nextRecording.startTime}`}
+                                </span>
+                                <span className="location">📍 {nextRecording.location || 'TBD'}</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Video Editing Progress */}
+                    <div className="overview-card videos-card">
+                      <div className="card-header">
+                        <div className="card-icon">✂️</div>
+                        <h4>Video Progress</h4>
+                      </div>
+                      <div className="card-content">
+                        {(() => {
+                          const clientScripts = scripts.filter(script => script.clientId === selectedClient.id);
+                          const incompleteScripts = clientScripts.filter(script => {
+                            const { edited, total } = getVideoEditingProgress(script.videos);
+                            return total > 0 && edited < total;
+                          });
+
+                          if (incompleteScripts.length === 0) {
+                            return (
+                              <div className="card-complete">
+                                <span className="complete-icon">✅</span>
+                                <p>All videos edited!</p>
+                              </div>
+                            );
+                          }
+
+                          const totalVideosNeedingEdit = incompleteScripts.reduce((sum, script) => {
+                            const { edited, total } = getVideoEditingProgress(script.videos);
+                            return sum + (total - edited);
+                          }, 0);
+
+                          const totalVideos = clientScripts.reduce((sum, script) => {
+                            const { total } = getVideoEditingProgress(script.videos);
+                            return sum + total;
+                          }, 0);
+
+                          const completedVideos = totalVideos - totalVideosNeedingEdit;
+                          const progressPercentage = totalVideos > 0 ? Math.round((completedVideos / totalVideos) * 100) : 0;
+
+                          return (
+                            <div className="card-data">
+                              <div className="progress-stats">
+                                <div className="stat-number">{totalVideosNeedingEdit}</div>
+                                <div className="stat-label">videos need editing</div>
+                              </div>
+                              <div className="progress-bar-container">
+                                <div className="progress-bar">
+                                  <div 
+                                    className="progress-fill" 
+                                    style={{ width: `${progressPercentage}%` }}
+                                  ></div>
+                                </div>
+                                <span className="progress-text">{progressPercentage}% complete</span>
+                              </div>
+                              <div className="scripts-count">
+                                {incompleteScripts.length} script{incompleteScripts.length !== 1 ? 's' : ''} in progress
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Content Statistics */}
+                    <div className="overview-card stats-card">
+                      <div className="card-header">
+                        <div className="card-icon">📊</div>
+                        <h4>Content Stats</h4>
+                      </div>
+                      <div className="card-content">
+                        {(() => {
+                          const clientPedEntries = pedEntries.filter(entry => entry.clientId === selectedClient.id);
+                          const totalPosts = clientPedEntries.length;
+                          
+                          if (totalPosts === 0) {
+                            return (
+                              <div className="card-empty">
+                                <span className="empty-icon">📈</span>
+                                <p>No content yet</p>
+                              </div>
+                            );
+                          }
+
+                          // Count posts by platform
+                          const platformCounts = {
+                            instagram: 0,
+                            tiktok: 0,
+                            linkedin: 0,
+                            facebook: 0,
+                            youtube: 0
+                          };
+                          
+                          clientPedEntries.forEach(entry => {
+                            entry.platforms.forEach(platform => {
+                              if (platformCounts.hasOwnProperty(platform)) {
+                                platformCounts[platform as keyof typeof platformCounts]++;
+                              }
+                            });
+                          });
+
+                          const topPlatforms = Object.entries(platformCounts)
+                            .filter(([_, count]) => count > 0)
+                            .sort(([_, a], [__, b]) => b - a)
+                            .slice(0, 3);
+
+                          return (
+                            <div className="card-data">
+                              <div className="total-content">
+                                <div className="stat-number">{totalPosts}</div>
+                                <div className="stat-label">total content pieces</div>
+                              </div>
+                              <div className="platform-stats">
+                                {topPlatforms.map(([platform, count]) => (
+                                  <div key={platform} className="platform-stat">
+                                    <span className="platform-name">{platform}</span>
+                                    <span className="platform-count">{count}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1139,10 +2538,49 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
                       {/* Bottom section - Video Edited */}
                       <div className="ped-video-section">
                         <h4>Video Edited</h4>
-                        <div className="coming-soon">
-                          <span>🎬</span>
-                          <span>Coming Soon...</span>
-                        </div>
+                        {(() => {
+                          // Get scripts for this client that are NOT fully edited
+                          const clientScripts = scripts.filter(script => script.clientId === selectedClient.id);
+                          const incompleteScripts = clientScripts.filter(script => {
+                            const { edited, total } = getVideoEditingProgress(script.videos);
+                            return total > 0 && edited < total; // Only show if not fully edited
+                          });
+
+                          if (incompleteScripts.length === 0) {
+                            return (
+                              <div className="no-incomplete-scripts">
+                                <span>🎬</span>
+                                <span>All videos edited!</span>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="incomplete-scripts-list">
+                              {incompleteScripts.map((script) => {
+                                const recordingDay = recordingDays.find(rd => rd.id === script.recordingDayId);
+                                const { edited, total } = getVideoEditingProgress(script.videos);
+                                
+                                return (
+                                  <div key={script.id} className="incomplete-script-item">
+                                    <div className="script-recording-date">
+                                      {recordingDay && recordingDay.date 
+                                        ? recordingDay.date.toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric'
+                                          })
+                                        : 'Not scheduled'
+                                      }
+                                    </div>
+                                    <div className="script-video-progress">
+                                      {edited}/{total} edited
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -1151,15 +2589,567 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
               
               {activeTab === 'rec' && (
                 <div className="tab-content">
-                  <h3>Rec</h3>
-                  <p>Rec content for {selectedClient.nameCompany} will be displayed here.</p>
+                  <div className="tab-header">
+                    <h3>Recording Days</h3>
+                    <div className="rec-info">
+                      {(() => {
+                        const clientRecordings = getFilteredRecordingDays();
+                        const totalRecordings = recordingDays.filter(r => r.clientId === selectedClient.id).length;
+                        const upcomingRecordings = clientRecordings.filter(r => r.date && r.date >= new Date()).length;
+                        const completedRecordings = clientRecordings.filter(r => r.status === 'complete').length;
+                        
+                        return (
+                          <span className="rec-summary">
+                            {clientRecordings.length} showing ({totalRecordings} total) • {upcomingRecordings} upcoming • {completedRecordings} completed
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                  
+                  {/* Filters */}
+                  <div className="rec-filters">
+                    <div className="rec-controls-left">
+                      <select
+                        value={recStatusFilter}
+                        onChange={(e) => setRecStatusFilter(e.target.value)}
+                        className="status-filter-select"
+                      >
+                        <option value="all">All Status</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="complete">Complete</option>
+                        <option value="incomplete">Incomplete</option>
+                        <option value="not-scheduled">Not Scheduled</option>
+                      </select>
+                    </div>
+                    
+                    <div className="rec-controls-center">
+                      <div className="date-filters-container">
+                        <div className="date-filter-group">
+                          <label htmlFor="recDateFilterFrom" className="date-filter-label">From:</label>
+                          <input
+                            type="date"
+                            id="recDateFilterFrom"
+                            name="recDateFilterFrom"
+                            value={recDateFilterFrom}
+                            onChange={(e) => setRecDateFilterFrom(e.target.value)}
+                            className="simple-date-input"
+                            style={{
+                              padding: '8px 12px',
+                              border: '2px solid #ddd',
+                              borderRadius: '6px',
+                              background: 'white',
+                              color: '#333',
+                              fontSize: '14px',
+                              fontFamily: 'Montserrat, sans-serif',
+                              cursor: 'pointer',
+                              outline: 'none',
+                              minWidth: '140px'
+                            }}
+                          />
+                        </div>
+                        <div className="date-filter-group">
+                          <label htmlFor="recDateFilterTo" className="date-filter-label">To:</label>
+                          <input
+                            type="date"
+                            id="recDateFilterTo"
+                            name="recDateFilterTo"
+                            value={recDateFilterTo}
+                            onChange={(e) => setRecDateFilterTo(e.target.value)}
+                            className="simple-date-input"
+                            style={{
+                              padding: '8px 12px',
+                              border: '2px solid #ddd',
+                              borderRadius: '6px',
+                              background: 'white',
+                              color: '#333',
+                              fontSize: '14px',
+                              fontFamily: 'Montserrat, sans-serif',
+                              cursor: 'pointer',
+                              outline: 'none',
+                              minWidth: '140px'
+                            }}
+                          />
+                        </div>
+                        {(recDateFilterFrom || recDateFilterTo) && (
+                          <button 
+                            className="btn-clear-filters"
+                            onClick={() => {
+                              setRecDateFilterFrom('');
+                              setRecDateFilterTo('');
+                            }}
+                            title="Clear date filters"
+                            style={{
+                              background: '#f44336',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '6px 10px',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              marginLeft: '8px'
+                            }}
+                          >
+                            ✕ Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="rec-content">
+                    {(() => {
+                      const clientRecordings = getFilteredRecordingDays();
+                      
+                      if (clientRecordings.length === 0) {
+                        return (
+                          <div className="no-recordings">
+                            <p>No recording days found for {selectedClient.nameCompany} matching your filters.</p>
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div className="recordings-list">
+                          {clientRecordings.map((recording) => (
+                            <div key={recording.id} className="recording-item">
+                              <div className="recording-main">
+                                <div className="recording-header">
+                                  <div className="recording-title-section">
+                                    <h4 className="recording-title">{recording.title}</h4>
+                                    <div className="recording-status-badges">
+                                      <div 
+                                        className="status-badge"
+                                        style={{ backgroundColor: getStatusColor(recording.status) }}
+                                      >
+                                        {recording.status.charAt(0).toUpperCase() + recording.status.slice(1)}
+                                      </div>
+                                      {!recording.script && (
+                                        <div className="status-badge script-needed">
+                                          Script Needed
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="recording-actions">
+                                    <button 
+                                      className="rec-action-btn edit-btn"
+                                      onClick={(e) => handleEditRecordingDay(recording, e)}
+                                      title="Edit"
+                                    >
+                                      ✏️
+                                    </button>
+                                    <button 
+                                      className="rec-action-btn delete-btn"
+                                      onClick={(e) => handleDeleteRecordingDay(recording, e)}
+                                      title="Delete"
+                                    >
+                                      🗑️
+                                    </button>
+                                  </div>
+                                </div>
+                                
+                                <div className="recording-datetime-location">
+                                  <div className="datetime-info">
+                                    <span className="info-icon">📅</span>
+                                    <span className="info-text">
+                                      {recording.date ? recording.date.toLocaleDateString() : 'Not scheduled'}
+                                    </span>
+                                    <span className="info-divider">•</span>
+                                    <span className="info-icon">⏰</span>
+                                    <span className="info-text">
+                                      {recording.startTime === 'All Day' && recording.endTime === 'All Day' 
+                                        ? 'All Day' 
+                                        : recording.startTime && recording.endTime 
+                                          ? `${recording.startTime} - ${recording.endTime}` 
+                                          : 'TBD'
+                                      }
+                                    </span>
+                                    <span className="info-divider">•</span>
+                                    <span className="info-icon">📍</span>
+                                    <span className="info-text">{recording.location || 'TBD'}</span>
+                                  </div>
+                                </div>
+                                
+                                {recording.notes && (
+                                  <div className="recording-notes-section">
+                                    <div className="notes-left">
+                                      {(() => {
+                                        const equipmentMatch = recording.notes.match(/Equipment: ([^\n]+)/);
+                                        const additionalNotesMatch = recording.notes.match(/Additional Notes: ([^\n]+)/);
+                                        
+                                        return (
+                                          <>
+                                            {equipmentMatch && equipmentMatch[1] !== 'Not specified' && (
+                                              <div className="note-item">
+                                                <span className="note-label">🎥 Equipment:</span>
+                                                <span className="note-content">{equipmentMatch[1]}</span>
+                                              </div>
+                                            )}
+                                            {additionalNotesMatch && additionalNotesMatch[1] !== 'None' && (
+                                              <div className="note-item">
+                                                <span className="note-label">📝 Notes:</span>
+                                                <span className="note-content">{additionalNotesMatch[1]}</span>
+                                              </div>
+                                            )}
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                    <div className="notes-right">
+                                      {(() => {
+                                        const assignedUsersMatch = recording.notes.match(/Assigned Users: ([^\n]+)/);
+                                        
+                                        if (assignedUsersMatch && assignedUsersMatch[1] !== 'None assigned') {
+                                          return (
+                                            <div className="note-item">
+                                              <span className="note-label">👥 Team:</span>
+                                              <span className="note-content">{assignedUsersMatch[1]}</span>
+                                            </div>
+                                          );
+                                        }
+                                        return null;
+                                      })()}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
               
               {activeTab === 'scripts' && (
                 <div className="tab-content">
-                  <h3>Scripts</h3>
-                  <p>Scripts content for {selectedClient.nameCompany} will be displayed here.</p>
+                  <div className="tab-header">
+                    <h3>Scripts</h3>
+                    <button className="add-script-btn" onClick={openScriptForm}>
+                      Add Script
+                    </button>
+                  </div>
+                  
+                  <div className="scripts-content">
+                    {(() => {
+                      const clientScripts = getFilteredScripts();
+                      
+                      if (clientScripts.length === 0) {
+                        return (
+                          <div className="no-scripts">
+                            <p>No scripts found for {selectedClient.nameCompany}.</p>
+                            <p>Click "Add Script" to create your first script.</p>
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div className="scripts-list">
+                          {clientScripts.map((script) => {
+                            // Find the recording day this script is assigned to
+                            const recordingDay = recordingDays.find(rd => rd.id === script.recordingDayId);
+                            const { edited, total } = getVideoEditingProgress(script.videos);
+                            const allVideosEdited = total > 0 && edited === total;
+                            
+                            return (
+                              <div key={script.id} className="script-item">
+                                <div className="script-header">
+                                  <div className="script-title-section">
+                                    <h4 className="script-name">{script.name}</h4>
+                                    {allVideosEdited && (
+                                      <span className="all-edited-check" title="All videos edited">
+                                        ✅
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="script-actions">
+                                    <button 
+                                      className="export-script-btn"
+                                      onClick={() => handleExportScript(script)}
+                                      title="Export script as PDF"
+                                    >
+                                      📄
+                                    </button>
+                                    <button 
+                                      className="edit-script-btn"
+                                      onClick={() => handleEditScript(script)}
+                                      title="Edit script"
+                                    >
+                                      ✏️
+                                    </button>
+                                    <button 
+                                      className="delete-script-btn"
+                                      onClick={() => handleDeleteScript(script)}
+                                      title="Delete script"
+                                    >
+                                      🗑️
+                                    </button>
+                                  </div>
+                                </div>
+                                
+                                <div className="script-details">
+                                  <div className="script-info-left">
+                                    <div className="script-info-line">
+                                      {recordingDay && recordingDay.date && (
+                                        <span className="recording-date">
+                                          <strong>📅 {recordingDay.date.toLocaleDateString()}</strong>
+                                        </span>
+                                      )}
+                                      {total > 0 && (
+                                        <span className="video-progress">
+                                          <strong>Videos:</strong> {edited}/{total} edited
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Video Section with Collapsible Design */}
+                                {script.videos.length > 0 && (
+                                  <div className="script-videos-summary">
+                                    <div className="script-videos-header" onClick={() => toggleScriptExpansion(script.id)}>
+                                      <span className="videos-count">
+                                        {script.videos.length} video{script.videos.length !== 1 ? 's' : ''}
+                                      </span>
+                                      <span className={`expand-caret ${expandedScripts.has(script.id) ? 'expanded' : ''}`}>
+                                        ▼
+                                      </span>
+                                    </div>
+                                    
+                                    {expandedScripts.has(script.id) ? (
+                                      <div className="video-checkboxes expanded">
+                                        {script.videos.map((video) => (
+                                          <div key={video.id} className="video-checkbox-item">
+                                            <label className="video-checkbox-compact">
+                                              <input
+                                                type="checkbox"
+                                                checked={video.isEdited}
+                                                onChange={() => toggleVideoEditedStatus(script, video.id)}
+                                              />
+                                              <span className="checkbox-number">{script.videos.indexOf(video) + 1}</span>
+                                            </label>
+                                            <div className="video-details">
+                                              <div className="video-name" title={video.name}>
+                                                {video.name}
+                                              </div>
+                                              {video.description && (
+                                                <div className="video-description" title={video.description}>
+                                                  {video.description}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="video-checkboxes compact">
+                                        {script.videos.map((video) => (
+                                          <label key={video.id} className="video-checkbox-compact">
+                                            <input
+                                              type="checkbox"
+                                              checked={video.isEdited}
+                                              onChange={() => toggleVideoEditedStatus(script, video.id)}
+                                            />
+                                            <span className="checkbox-number">{script.videos.indexOf(video) + 1}</span>
+                                          </label>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+              
+              {activeTab === 'statistics' && (
+                <div className="tab-content">
+                  <div className="tab-header">
+                    <h3>Statistics & Analytics</h3>
+                    <div className="tab-header-buttons">
+                      <button className="view-all-data-btn" onClick={openSocialMediaDataManagement}>
+                        View All Data
+                      </button>
+                      <button className="add-monthly-data-btn" onClick={openSocialMediaForm}>
+                        Add Monthly Data
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="statistics-content">
+                    <div className="social-media-dashboard">
+                      <h4>Social Media Followers</h4>
+                      <div className="social-platforms-grid">
+                        {['instagram', 'tiktok', 'linkedin', 'youtube', 'facebook'].map((platform) => {
+                          const currentFollowers = getCurrentMonthFollowers(selectedClient.id, platform);
+                          const growthPercentage = getFollowerGrowthPercentage(selectedClient.id, platform);
+                          
+                          return (
+                            <div key={platform} className="social-platform-card">
+                              <div className="platform-header">
+                                <img src={getSocialMediaIcon(platform)} alt={platform} className="platform-icon" />
+                                <h5 className="platform-name">{platform.charAt(0).toUpperCase() + platform.slice(1)}</h5>
+                              </div>
+                              
+                              <div className="follower-count">
+                                <span className="current-followers">{formatFollowerCount(currentFollowers || 0)}</span>
+                                <span className="followers-label">followers</span>
+                              </div>
+                              
+                              {growthPercentage !== null && (
+                                <div className={`growth-indicator ${growthPercentage >= 0 ? 'positive' : 'negative'}`}>
+                                  <span className="growth-icon">
+                                    {growthPercentage >= 0 ? '↗️' : '↘️'}
+                                  </span>
+                                  <span className="growth-percentage">
+                                    {Math.abs(growthPercentage)}% vs last month
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      
+                      {/* Social Media Growth Charts */}
+                      <div className="social-media-charts">
+                        <div className="charts-header">
+                          <h4>Follower Growth (Last {chartMonthsFilter} Month{chartMonthsFilter !== 1 ? 's' : ''})</h4>
+                          <div className="chart-filter">
+                            <button 
+                              className={`chart-filter-btn ${chartMonthsFilter === 3 ? 'active' : ''}`}
+                              onClick={() => setChartMonthsFilter(3)}
+                            >
+                              3M
+                            </button>
+                            <button 
+                              className={`chart-filter-btn ${chartMonthsFilter === 6 ? 'active' : ''}`}
+                              onClick={() => setChartMonthsFilter(6)}
+                            >
+                              6M
+                            </button>
+                            <button 
+                              className={`chart-filter-btn ${chartMonthsFilter === 12 ? 'active' : ''}`}
+                              onClick={() => setChartMonthsFilter(12)}
+                            >
+                              1Y
+                            </button>
+                            <button 
+                              className={`chart-filter-btn ${chartMonthsFilter === 24 ? 'active' : ''}`}
+                              onClick={() => setChartMonthsFilter(24)}
+                            >
+                              2Y
+                            </button>
+                          </div>
+                        </div>
+                        <div className="charts-grid-two-per-row">
+                          {['instagram', 'tiktok', 'linkedin', 'youtube', 'facebook'].map((platform) => {
+                            const chartData = getLastMonthsData(selectedClient.id, platform, chartMonthsFilter);
+                            
+                            return (
+                              <div key={platform} className="chart-container">
+                                <div className="chart-header">
+                                  <img src={getSocialMediaIcon(platform)} alt={platform} className="chart-platform-icon" />
+                                  <h5 className="chart-platform-name">{platform.charAt(0).toUpperCase() + platform.slice(1)}</h5>
+                                </div>
+                                
+                                <div className="chart-wrapper">
+                                  {chartData.length > 0 ? (
+                                    <svg className="growth-chart" viewBox="0 0 600 300" style={{ width: '100%', height: '100%' }}>
+                                      {/* Chart background */}
+                                      <rect width="600" height="300" fill="#f8f9fa" rx="8" />
+                                      
+                                      {/* Chart lines and data points */}
+                                      {(() => {
+                                        const maxValue = Math.max(...chartData.map(d => d.followers), 1);
+                                        const minValue = Math.min(...chartData.map(d => d.followers), 0);
+                                        const range = maxValue - minValue || 1;
+                                        
+                                        const points = chartData.map((data, index) => {
+                                          const x = 60 + (index * (480 / Math.max(chartData.length - 1, 1)));
+                                          const y = 240 - ((data.followers - minValue) / range) * 180;
+                                          return { x, y, followers: data.followers, month: data.month };
+                                        });
+                                        
+                                        return (
+                                          <>
+                                            {/* Grid lines */}
+                                            {[0, 45, 90, 135, 180].map(yOffset => (
+                                              <line
+                                                key={yOffset}
+                                                x1="60"
+                                                y1={60 + yOffset}
+                                                x2="540"
+                                                y2={60 + yOffset}
+                                                stroke="#e0e0e0"
+                                                strokeWidth="1"
+                                              />
+                                            ))}
+                                            
+                                            {/* Growth line */}
+                                            {points.length > 1 && (
+                                              <polyline
+                                                points={points.map(p => `${p.x},${p.y}`).join(' ')}
+                                                fill="none"
+                                                stroke="#5b3983"
+                                                strokeWidth="2"
+                                              />
+                                            )}
+                                            
+                                            {/* Data points */}
+                                            {points.map((point, index) => (
+                                              <g key={index}>
+                                                <circle
+                                                  cx={point.x}
+                                                  cy={point.y}
+                                                  r="5"
+                                                  fill="#5b3983"
+                                                />
+                                                <text
+                                                  x={point.x}
+                                                  y={point.y - 10}
+                                                  textAnchor="middle"
+                                                  fontSize="12"
+                                                  fill="#5b3983"
+                                                  fontWeight="bold"
+                                                >
+                                                  {formatFollowerCount(point.followers)}
+                                                </text>
+                                                <text
+                                                  x={point.x}
+                                                  y={280}
+                                                  textAnchor="middle"
+                                                  fontSize="14"
+                                                  fill="#666"
+                                                >
+                                                  {point.month.split('-')[1]}
+                                                </text>
+                                              </g>
+                                            ))}
+                                          </>
+                                        );
+                                      })()}
+                                    </svg>
+                                  ) : (
+                                    <div className="no-chart-data">
+                                      <p>No data available</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
               
@@ -1217,34 +3207,74 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
                       </div>
                       
                       <div className="brain-dump-controls-right">
-                        <div className="date-filters">
-                          <label>
-                            From:
+                        <div className="date-filters-container">
+                          <div className="date-filter-group">
+                            <label htmlFor="brainDumpDateFilterFrom" className="date-filter-label">From:</label>
                             <input
                               type="date"
+                              id="brainDumpDateFilterFrom"
+                              name="brainDumpDateFilterFrom"
                               value={brainDumpDateFilterFrom}
                               onChange={(e) => setBrainDumpDateFilterFrom(e.target.value)}
-                              className="date-filter-input"
+                              className="simple-date-input"
+                              style={{
+                                padding: '8px 12px',
+                                border: '2px solid #ddd',
+                                borderRadius: '6px',
+                                background: 'white',
+                                color: '#333',
+                                fontSize: '14px',
+                                fontFamily: 'Montserrat, sans-serif',
+                                cursor: 'pointer',
+                                outline: 'none',
+                                minWidth: '140px'
+                              }}
                             />
-                          </label>
-                          <label>
-                            To:
+                          </div>
+                          <div className="date-filter-group">
+                            <label htmlFor="brainDumpDateFilterTo" className="date-filter-label">To:</label>
                             <input
                               type="date"
+                              id="brainDumpDateFilterTo"
+                              name="brainDumpDateFilterTo"
                               value={brainDumpDateFilterTo}
                               onChange={(e) => setBrainDumpDateFilterTo(e.target.value)}
-                              className="date-filter-input"
+                              className="simple-date-input"
+                              style={{
+                                padding: '8px 12px',
+                                border: '2px solid #ddd',
+                                borderRadius: '6px',
+                                background: 'white',
+                                color: '#333',
+                                fontSize: '14px',
+                                fontFamily: 'Montserrat, sans-serif',
+                                cursor: 'pointer',
+                                outline: 'none',
+                                minWidth: '140px'
+                              }}
                             />
-                          </label>
+                          </div>
                           {(brainDumpDateFilterFrom || brainDumpDateFilterTo) && (
                             <button 
-                              className="btn-clear-filter" 
+                              className="btn-clear-filters"
                               onClick={() => {
                                 setBrainDumpDateFilterFrom('');
                                 setBrainDumpDateFilterTo('');
                               }}
+                              title="Clear date filters"
+                              style={{
+                                background: '#f44336',
+                                color: 'white',
+                                border: 'none',
+                                padding: '8px 12px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                fontFamily: 'Montserrat, sans-serif',
+                                fontWeight: '600'
+                              }}
                             >
-                              Clear Filters
+                              Clear
                             </button>
                           )}
                         </div>
@@ -1329,6 +3359,248 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
       {/* PED Form Modal */}
       {showPedForm && (
         <div className="ped-form-overlay" onClick={closePedForm}>
+          {/* Calendar Panel */}
+          <div className="ped-calendar-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="ped-calendar-header">
+              <h3>Content Calendar</h3>
+              <p>Existing PED entries for {selectedClient?.nameCompany}</p>
+            </div>
+            <div className="ped-calendar-content">
+              <div className="calendar-legend">
+                <div className="legend-item">
+                  <div className="legend-dot today"></div>
+                  <span>Today</span>
+                </div>
+                <div className="legend-item">
+                  <div className="legend-dot has-content"></div>
+                  <span>Has content</span>
+                </div>
+                <div className="legend-item">
+                  <div className="legend-dot selected"></div>
+                  <span>Selected</span>
+                </div>
+                <div className="legend-item">
+                  <div className="legend-dot past"></div>
+                  <span>Past date</span>
+                </div>
+              </div>
+              
+              {(() => {
+                if (!selectedClient) return null;
+                
+                try {
+                  const clientPedEntries = pedEntries
+                    .filter(entry => entry.clientId === selectedClient.id)
+                    .filter(entry => entry.releaseDate);
+
+                  // Create helper functions for content detection
+                  const hasContentOnDate = (date: Date) => {
+                    try {
+                      // Use local timezone formatting to match handleDateChange
+                      const year = date.getFullYear();
+                      const month = String(date.getMonth() + 1).padStart(2, '0');
+                      const day = String(date.getDate()).padStart(2, '0');
+                      const dateString = `${year}-${month}-${day}`;
+                      return clientPedEntries.some(entry => entry.releaseDate === dateString);
+                    } catch (error) {
+                      console.error('Error checking content for date:', error);
+                      return false;
+                    }
+                  };
+
+                  const getContentForDate = (date: Date) => {
+                    try {
+                      // Use local timezone formatting to match handleDateChange
+                      const year = date.getFullYear();
+                      const month = String(date.getMonth() + 1).padStart(2, '0');
+                      const day = String(date.getDate()).padStart(2, '0');
+                      const dateString = `${year}-${month}-${day}`;
+                      return clientPedEntries.filter(entry => entry.releaseDate === dateString);
+                    } catch (error) {
+                      console.error('Error getting content for date:', error);
+                      return [];
+                    }
+                  };
+
+                  // Custom tile content for overlay effect
+                  const tileContent = ({ date, view }: any) => {
+                    try {
+                      if (view === 'month' && date instanceof Date) {
+                        const entries = getContentForDate(date);
+                        if (entries.length > 0) {
+                          return (
+                            <div className="calendar-tile-content">
+                              <div className="content-overlay">
+                                <div className="content-dots">
+                                  {entries.slice(0, 3).map((entry) => (
+                                    <div 
+                                      key={entry.id} 
+                                      className="content-dot" 
+                                      title={entry.publicationName}
+                                    />
+                                  ))}
+                                  {entries.length > 3 && (
+                                    <div className="content-dot more" title={`+${entries.length - 3} more`}>
+                                      +{entries.length - 3}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Error in tileContent:', error);
+                    }
+                    return null;
+                  };
+
+                  // Custom tile class name for styling
+                  const tileClassName = ({ date, view }: any) => {
+                    try {
+                      if (view === 'month' && date instanceof Date) {
+                        const classes = [];
+                        const today = new Date();
+                        
+                        // Create date string using local timezone to match handleDateChange format
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const dateString = `${year}-${month}-${day}`;
+                        
+                        // Create today string using same local timezone format
+                        const todayYear = today.getFullYear();
+                        const todayMonth = String(today.getMonth() + 1).padStart(2, '0');
+                        const todayDay = String(today.getDate()).padStart(2, '0');
+                        const todayString = `${todayYear}-${todayMonth}-${todayDay}`;
+                        
+                        // Check if date is in the past (using local timezone dates)
+                        const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                        const localToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                        if (localDate < localToday && dateString !== todayString) {
+                          classes.push('past-date');
+                        }
+                        
+                        // Check if date has content
+                        if (hasContentOnDate(date)) {
+                          classes.push('has-content');
+                        }
+                        
+                        // Check if date is selected (now using same format as handleDateChange)
+                        if (pedFormData.releaseDate === dateString) {
+                          classes.push('selected-date');
+                        }
+                        
+                        return classes.join(' ');
+                      }
+                    } catch (error) {
+                      console.error('Error in tileClassName:', error);
+                    }
+                    return '';
+                  };
+
+                  // Fixed date change handler to prevent "day before" selection
+                  const handleDateChange = (value: any) => {
+                    try {
+                      if (value && value instanceof Date) {
+                        const today = new Date();
+                        // Create a new date in local timezone to avoid timezone issues
+                        const selectedDate = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+                        const todayLocal = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                        
+                        // Prevent selecting past dates
+                        if (selectedDate >= todayLocal) {
+                          // Format the date properly to avoid timezone issues
+                          const year = selectedDate.getFullYear();
+                          const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                          const day = String(selectedDate.getDate()).padStart(2, '0');
+                          const dateString = `${year}-${month}-${day}`;
+                          handlePedFormChange('releaseDate', dateString);
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Error handling date change:', error);
+                    }
+                  };
+
+                  return (
+                    <div className="react-calendar-container">
+                      <div className="calendar-wrapper">
+                        <Calendar
+                          onChange={handleDateChange}
+                          value={pedFormData.releaseDate ? (() => {
+                            // Parse the date string properly to avoid timezone issues
+                            const [year, month, day] = pedFormData.releaseDate.split('-').map(Number);
+                            return new Date(year, month - 1, day);
+                          })() : null}
+                          tileContent={tileContent}
+                          tileClassName={tileClassName}
+                          minDate={new Date()}
+                          showNeighboringMonth={false}
+                          locale="en-US"
+                          calendarType="iso8601"
+                        />
+                      </div>
+                      
+                      {/* Display selected date info */}
+                      {pedFormData.releaseDate && (() => {
+                        try {
+                          const [year, month, day] = pedFormData.releaseDate.split('-').map(Number);
+                          const selectedDate = new Date(year, month - 1, day);
+                          const entries = getContentForDate(selectedDate);
+                          
+                          return (
+                            <div className="selected-date-info">
+                              <div className="selected-date-header">
+                                <h4>Selected: {selectedDate.toLocaleDateString('en-US', { 
+                                  weekday: 'long', 
+                                  year: 'numeric', 
+                                  month: 'long', 
+                                  day: 'numeric' 
+                                })}</h4>
+                                <button 
+                                  className="clear-date-btn"
+                                  onClick={() => handlePedFormChange('releaseDate', '')}
+                                  title="Clear selected date"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                              {entries.length > 0 && (
+                                <div className="existing-content">
+                                  <p><strong>Existing content on this date:</strong></p>
+                                  <ul>
+                                    {entries.map(entry => (
+                                      <li key={entry.id}>
+                                        {entry.publicationName} ({entry.postType || 'Unknown type'})
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        } catch (error) {
+                          console.error('Error displaying selected date info:', error);
+                          return null;
+                        }
+                      })()}
+                    </div>
+                  );
+                } catch (error) {
+                  console.error('Error rendering calendar:', error);
+                  return (
+                    <div className="calendar-error">
+                      <p>Error loading calendar. Please refresh the page.</p>
+                      <button onClick={() => window.location.reload()}>Refresh</button>
+                    </div>
+                  );
+                }
+              })()}
+            </div>
+          </div>
+          
           <div className="ped-form-modal" onClick={(e) => e.stopPropagation()}>
             <div className="ped-form-header">
               <h3>Generate PED Entry - Step {pedFormStep} of 3</h3>
@@ -1365,12 +3637,21 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
                   
                   <div className="form-group">
                     <label>Release Date *</label>
-                    <input
-                      type="date"
-                      value={pedFormData.releaseDate}
-                      onChange={(e) => handlePedFormChange('releaseDate', e.target.value)}
-                      min={new Date().toISOString().split('T')[0]} // Prevent selecting dates before today
-                    />
+                    <div className="date-input-display">
+                      <input
+                        type="text"
+                        value={pedFormData.releaseDate ? new Date(pedFormData.releaseDate).toLocaleDateString('en-US', { 
+                          weekday: 'long', 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        }) : ''}
+                        placeholder="Select a date from the calendar on the left"
+                        readOnly
+                        className="date-display-input"
+                      />
+                      <small className="date-helper-text">Click on a date in the calendar to select your release date</small>
+                    </div>
                   </div>
                   
                   <div className="form-group">
@@ -1525,60 +3806,9 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
                 )}
               </div>
               
-              <div className="ped-controls-center">
-                <div className="search-box">
-                  <input
-                    type="text"
-                    value={pedSearchQuery}
-                    onChange={(e) => setPedSearchQuery(e.target.value)}
-                    placeholder="Search by name or copy content..."
-                    className="search-input"
-                  />
-                  {pedSearchQuery && (
-                    <button 
-                      className="btn-clear-search" 
-                      onClick={() => setPedSearchQuery('')}
-                      title="Clear search"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              </div>
+             
               
-              <div className="ped-controls-right">
-                <div className="date-filters">
-                  <label>
-                    From:
-                    <input
-                      type="date"
-                      value={pedDateFilterFrom}
-                      onChange={(e) => setPedDateFilterFrom(e.target.value)}
-                      className="date-filter-input"
-                    />
-                  </label>
-                  <label>
-                    To:
-                    <input
-                      type="date"
-                      value={pedDateFilterTo}
-                      onChange={(e) => setPedDateFilterTo(e.target.value)}
-                      className="date-filter-input"
-                    />
-                  </label>
-                  {(pedDateFilterFrom || pedDateFilterTo) && (
-                    <button 
-                      className="btn-clear-filter" 
-                      onClick={() => {
-                        setPedDateFilterFrom('');
-                        setPedDateFilterTo('');
-                      }}
-                    >
-                      Clear Filters
-                    </button>
-                  )}
-                </div>
-              </div>
+              
             </div>
 
             <div className="ped-management-content">
@@ -1633,6 +3863,109 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
         </div>
       )}
 
+      {/* Script Form Modal */}
+      {showScriptForm && (
+        <div className="script-form-overlay" onClick={closeScriptForm}>
+          <div className="script-form-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="script-form-header">
+              <h3>{editingScript ? 'Edit Script' : 'Add New Script'}</h3>
+              <button className="script-form-close" onClick={closeScriptForm}>×</button>
+            </div>
+
+            <div className="script-form-content">
+              <div className="form-group">
+                <label htmlFor="scriptName">Script Name *</label>
+                <input
+                  type="text"
+                  id="scriptName"
+                  value={scriptFormData.name}
+                  onChange={(e) => handleScriptFormChange('name', e.target.value)}
+                  placeholder="Enter script name..."
+                  className="form-input"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="recordingDay">Assign to Recording Day *</label>
+                <select
+                  id="recordingDay"
+                  value={scriptFormData.recordingDayId}
+                  onChange={(e) => handleScriptFormChange('recordingDayId', e.target.value)}
+                  className="form-select"
+                  disabled={!!editingScript} // Disable editing recording day assignment
+                >
+                  <option value="">Select a recording day...</option>
+                  {getRecordingDaysForClient().map((day) => (
+                    <option key={day.id} value={day.id}>
+                      {day.title} {day.date ? `- ${day.date.toLocaleDateString()}` : '(No date set)'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Video Management Section */}
+              <div className="form-group">
+                <div className="videos-section-header">
+                  <label>Videos to Record</label>
+                  <button 
+                    type="button"
+                    className="add-video-btn"
+                    onClick={addVideoToScript}
+                  >
+                    + Add Video
+                  </button>
+                </div>
+                
+                <div className="videos-list">
+                  {scriptFormData.videos.map((video, index) => (
+                    <div key={video.id} className="video-form-item">
+                      <div className="video-header">
+                        <input
+                          type="text"
+                          value={video.name}
+                          onChange={(e) => updateVideoName(video.id, e.target.value)}
+                          placeholder={`Video ${index + 1} name...`}
+                          className="video-name-input"
+                        />
+                        <button
+                          type="button"
+                          className="remove-video-btn"
+                          onClick={() => removeVideoFromScript(video.id)}
+                          title="Remove video"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <textarea
+                        value={video.description}
+                        onChange={(e) => updateVideoDescription(video.id, e.target.value)}
+                        placeholder={`Description for ${video.name || `Video ${index + 1}`}...`}
+                        className="video-description-textarea"
+                        rows={3}
+                      />
+                    </div>
+                  ))}
+                  {scriptFormData.videos.length === 0 && (
+                    <p className="no-videos-message">
+                      No videos added yet. Click "Add Video" to add videos that will be recorded.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="script-form-actions">
+              <button className="btn-cancel" onClick={closeScriptForm}>
+                Cancel
+              </button>
+              <button className="btn-submit" onClick={submitScriptForm}>
+                {editingScript ? 'Update Script' : 'Create Script'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Brain Dump Form Modal */}
       {showBrainDumpForm && (
         <div className="brain-dump-form-overlay" onClick={closeBrainDumpForm}>
@@ -1656,13 +3989,23 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
               
               <div className="form-group">
                 <label>Content *</label>
-                <textarea
-                  value={brainDumpFormData.content}
-                  onChange={(e) => handleBrainDumpFormChange('content', e.target.value)}
-                  placeholder="Write your ideas, thoughts, and creative concepts here..."
-                  rows={15}
-                  className="brain-dump-content-textarea"
-                />
+                    <textarea
+                      value={brainDumpFormData.content}
+                      onChange={(e) => handleBrainDumpFormChange('content', e.target.value)}
+                      placeholder="Write your ideas, thoughts, and creative concepts here..."
+                      rows={15}
+                      className="brain-dump-content-textarea"
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: '2px solid #e0e0e0',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        fontFamily: 'Montserrat, sans-serif',
+                        resize: 'vertical',
+                        outline: 'none'
+                      }}
+                    />
               </div>
             </div>
 
@@ -1754,6 +4097,143 @@ export default function ClientManagement({ onNavigate }: ClientManagementProps) 
               >
                 Generate PDF
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Social Media Form Modal */}
+      {showSocialMediaForm && (
+        <div className="social-media-form-overlay" onClick={closeSocialMediaForm}>
+          <div className="social-media-form-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="social-media-form-header">
+              <h3>Add Monthly Social Media Data</h3>
+              <button className="social-media-form-close" onClick={closeSocialMediaForm}>×</button>
+            </div>
+
+            <div className="social-media-form-content">
+              <div className="form-group">
+                <label>Month *</label>
+                <input
+                  type="month"
+                  value={socialMediaFormData.month}
+                  onChange={(e) => handleSocialMediaFormChange('month', e.target.value)}
+                  className="month-input"
+                />
+              </div>
+              
+              <div className="social-platforms-form">
+                <h4>Follower Counts</h4>
+                <p className="form-hint">Enter follower counts for each platform (leave blank if not applicable)</p>
+                
+                <div className="platform-inputs-grid">
+                  {['instagram', 'tiktok', 'linkedin', 'youtube', 'facebook'].map(platform => (
+                    <div key={platform} className="platform-input-group">
+                      <label className="platform-label">
+                        <img src={getSocialMediaIcon(platform)} alt={platform} className="platform-icon-small" />
+                        {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={socialMediaFormData[platform as keyof typeof socialMediaFormData]}
+                        onChange={(e) => handleSocialMediaFormChange(platform, e.target.value)}
+                        className="follower-input"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="social-media-form-actions">
+              <button className="btn-cancel" onClick={closeSocialMediaForm}>
+                Cancel
+              </button>
+              <button 
+                className="btn-save" 
+                onClick={submitSocialMediaForm}
+              >
+                Save Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Social Media Data Management Modal */}
+      {showSocialMediaDataManagement && selectedClient && (
+        <div className="social-media-data-overlay" onClick={closeSocialMediaDataManagement}>
+          <div className="social-media-data-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="social-media-data-header">
+              <h3>Social Media Data - {selectedClient.nameCompany}</h3>
+              <button className="social-media-data-close" onClick={closeSocialMediaDataManagement}>×</button>
+            </div>
+            
+            <div className="social-media-data-content">
+              {(() => {
+                const clientData = getClientSocialMediaData();
+                const months = Object.keys(clientData).sort().reverse(); // Most recent first
+                
+                if (months.length === 0) {
+                  return (
+                    <div className="no-social-data">
+                      <p>No social media data found for {selectedClient.nameCompany}.</p>
+                      <p>Use "Add Monthly Data" to start tracking follower counts.</p>
+                    </div>
+                  );
+                }
+                
+                return (
+                  <div className="social-data-table">
+                    <div className="social-data-table-header">
+                      <div className="month-column">Month</div>
+                      <div className="platform-column">Instagram</div>
+                      <div className="platform-column">TikTok</div>
+                      <div className="platform-column">LinkedIn</div>
+                      <div className="platform-column">YouTube</div>
+                      <div className="platform-column">Facebook</div>
+                      <div className="actions-column">Actions</div>
+                    </div>
+                    
+                    {months.map(month => {
+                      const monthData = clientData[month];
+                      return (
+                        <div key={month} className="social-data-row">
+                          <div className="month-cell">{month}</div>
+                          {['instagram', 'tiktok', 'linkedin', 'youtube', 'facebook'].map(platform => (
+                            <div key={platform} className="platform-cell">
+                              {monthData[platform] ? (
+                                <div className="platform-value-with-actions">
+                                  <span className="follower-value">{formatFollowerCount(monthData[platform])}</span>
+                                  <button 
+                                    className="edit-data-btn"
+                                    onClick={() => handleEditSocialMediaData(month, platform, monthData[platform])}
+                                    title={`Edit ${platform}`}
+                                  >
+                                    ✏️
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="no-data">-</span>
+                              )}
+                            </div>
+                          ))}
+                          <div className="actions-cell">
+                            <button 
+                              className="delete-month-btn"
+                              onClick={() => handleDeleteMonthData(month)}
+                              title={`Delete all data for ${month}`}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

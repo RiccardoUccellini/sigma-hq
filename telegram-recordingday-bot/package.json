@@ -1,0 +1,34 @@
+{
+  "name": "sigma-recording-day-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for recording day notifications",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "ts-node bot.ts",
+    "build": "tsc"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "firebase",
+    "recording"
+  ],
+  "author": "SIGMA HQ",
+  "license": "MIT",
+  "dependencies": {
+    "@types/mongodb": "^4.0.6",
+    "dotenv": "^17.2.1",
+    "firebase-admin": "^13.4.0",
+    "mongodb": "^6.19.0",
+    "node-cron": "^4.2.1",
+    "node-telegram-bot-api": "^0.66.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "@types/node-cron": "^3.0.11",
+    "@types/node-telegram-bot-api": "^0.64.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  }
+}

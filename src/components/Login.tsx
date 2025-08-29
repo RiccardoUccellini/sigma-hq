@@ -6,11 +6,10 @@ import './Login.css';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLogin] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const { login, signup } = useAuth();
+  const { login } = useAuth();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -19,13 +18,9 @@ export default function Login() {
       setError('');
       setLoading(true);
       
-      if (isLogin) {
-        await login(email, password);
-      } else {
-        await signup(email, password);
-      }
+      await login(email, password);
     } catch (error) {
-      setError('Failed to ' + (isLogin ? 'log in' : 'create account'));
+      setError('Failed to log in. Check your credentials.');
       console.error(error);
     }
     
@@ -83,7 +78,7 @@ export default function Login() {
                 id="password"
                 name="password"
                 type="password"
-                autoComplete={isLogin ? "current-password" : "new-password"}
+                autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -107,7 +102,7 @@ export default function Login() {
                 </>
               ) : (
                 <>
-                  <span>{isLogin ? 'Sign In' : 'Create Account'}</span>
+                  <span>Sign In</span>
                   <svg height="20" width="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>

@@ -134,7 +134,7 @@ html, body {
   padding: 1.5rem;
   transition: all 0.3s ease;
   cursor: pointer;
-  height: 160px;
+  height: 200px;
   overflow: hidden;
   position: relative;
   z-index: 1;
@@ -228,6 +228,7 @@ html, body {
   line-height: 1.2;
   overflow-wrap: break-word;
   hyphens: auto;
+  text-align: center;
 }
 
 /* Responsive font size for long names */
@@ -255,7 +256,7 @@ html, body {
 }
 
 .client-status {
-  margin: 0; /* Remove margin since we're using gap */
+  margin: auto; /* Remove margin since we're using gap */
 }
 
 .client-dates {
@@ -475,7 +476,7 @@ html, body {
 
 /* Client Card Status Styles */
 .client-status {
-  margin: 0.5rem 0;
+  margin: auto;
 }
 
 .client-start-date, .client-end-date {

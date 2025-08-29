@@ -1,13 +1,10 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import type { User } from 'firebase/auth';
 import type { ReactNode } from 'react';
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { authenticateUser, saveUserSession, getUserSession, clearUserSession, type User } from '../lib/auth';
 
 interface AuthContextType {
   currentUser: User | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
 }
@@ -30,31 +27,33 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function signup(email: string, password: string) {
-    await createUserWithEmailAndPassword(auth, email, password);
-  }
+  const login = async (email: string, password: string) => {
+    const user = await authenticateUser(email, password);
+    if (user) {
+      setCurrentUser(user);
+      saveUserSession(user);
+    } else {
+      throw new Error('Invalid email or password');
+    }
+  };
 
-  async function login(email: string, password: string) {
-    await signInWithEmailAndPassword(auth, email, password);
-  }
-
-  async function logout() {
-    await signOut(auth);
-  }
+  const logout = async () => {
+    setCurrentUser(null);
+    clearUserSession();
+  };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    // Check for existing session on mount
+    const savedUser = getUserSession();
+    if (savedUser) {
+      setCurrentUser(savedUser);
+    }
+    setLoading(false);
   }, []);
 
-  const value: AuthContextType = {
+  const value = {
     currentUser,
     login,
-    signup,
     logout,
     loading
   };

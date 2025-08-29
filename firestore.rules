@@ -2,9 +2,11 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can read and write their own user document
+    // Users collection - allow authenticated users to read all users (for team selection)
+    // but only write to their own user document
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
     
     // Allow authenticated users to read and write to their own data
@@ -26,6 +28,33 @@ service cloud.firestore {
     // PED Entries collection - allow authenticated users to read and write
     match /pedEntries/{document=**} {
       allow read, write: if request.auth != null;
+    }
+    
+    // Recording Days collection - allow authenticated users to read and write
+    match /recordingDays/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Brain Dump Notes collection - allow authenticated users to read and write
+    match /brainDumpNotes/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Scripts collection - allow authenticated users to read and write
+    match /scripts/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Social Media Followers collection - allow authenticated users to read and write
+    match /socialMediaFollowers/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Game Leaderboard collection - allow authenticated users to read all scores
+    // but only write to their own score document
+    match /gameLeaderboard/{userEmail} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.email == userEmail;
     }
   }
 }
