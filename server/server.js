@@ -18,8 +18,8 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// MongoDB connection - Force new URI format
-const uri = 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+// MongoDB connection - Nuovo cluster funzionante
+const uri = 'mongodb+srv://Riccardo:ru2023.CP@cluster0.jwdseqd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 const dbName = 'sigma-hq';
 
 let db;
