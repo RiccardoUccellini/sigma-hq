@@ -19,26 +19,53 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB connection
-const uri = process.env.MONGODB_URI || 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/sigma-hq?retryWrites=true&w=majority&tlsInsecure=true';
+const uri = process.env.MONGODB_URI || 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/sigma-hq?retryWrites=true&w=majority';
 const dbName = 'sigma-hq';
 
 let db;
 let isConnected = false;
 
 // Connect to MongoDB
+console.log('🔄 Attempting to connect to MongoDB...');
+console.log('URI:', uri.replace(/:[^@]*@/, ':***@')); // Hide password
+
 MongoClient.connect(uri, {
-  tlsInsecure: true,
-  serverSelectionTimeoutMS: 10000,
-  connectTimeoutMS: 15000
+  serverSelectionTimeoutMS: 30000,
+  connectTimeoutMS: 30000,
+  socketTimeoutMS: 0
 })
   .then(client => {
-    console.log('✅ Connected to MongoDB');
+    console.log('✅ Connected to MongoDB successfully!');
     db = client.db(dbName);
     isConnected = true;
+    
+    // Test the connection
+    db.admin().ping().then(() => {
+      console.log('✅ MongoDB ping successful');
+    }).catch(err => {
+      console.warn('⚠️  MongoDB ping failed:', err.message);
+    });
   })
   .catch(error => {
-    console.error('❌ MongoDB connection error:', error);
+    console.error('❌ MongoDB connection error:', error.message);
+    console.error('Full error:', error);
     isConnected = false;
+    
+    // Retry connection after 10 seconds
+    setTimeout(() => {
+      console.log('🔄 Retrying MongoDB connection...');
+      MongoClient.connect(uri, {
+        serverSelectionTimeoutMS: 30000,
+        connectTimeoutMS: 30000,
+        socketTimeoutMS: 0
+      }).then(client => {
+        console.log('✅ MongoDB retry connection successful!');
+        db = client.db(dbName);
+        isConnected = true;
+      }).catch(retryError => {
+        console.error('❌ MongoDB retry failed:', retryError.message);
+      });
+    }, 10000);
   });
 
 // Middleware to check MongoDB connection
