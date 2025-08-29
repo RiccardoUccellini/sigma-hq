@@ -19,7 +19,7 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB connection
-const uri = 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/';
+const uri = process.env.MONGODB_URI || 'mongodb+srv://Riccardo:ru2023.CP@cluster0.xwxu3a1.mongodb.net/';
 const dbName = 'sigma-hq';
 
 let db;
