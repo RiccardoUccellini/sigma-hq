@@ -60,7 +60,7 @@ let availableUsers: any[] = [];
 // Load clients and users from backend
 async function loadClientsAndUsers() {
   try {
-    const API_URL = process.env.API_URL || 'http://localhost:3001/api';
+    const API_URL = process.env.API_URL || 'https://sigma-hq.onrender.com/api';
     
     // Load active clients
     const clientsResponse = await fetch(`${API_URL}/clients/active`);
@@ -83,7 +83,7 @@ async function loadClientsAndUsers() {
 // Get next N recording days from API
 async function getNextRecordingDays(limit: number = 3): Promise<RecordingDay[]> {
   try {
-    const API_URL = process.env.API_URL || 'http://localhost:3001/api';
+    const API_URL = process.env.API_URL || 'https://sigma-hq.onrender.com/api';
     const response = await fetch(`${API_URL}/recording-days`);
     
     if (!response.ok) {
@@ -116,7 +116,7 @@ async function getNextRecordingDays(limit: number = 3): Promise<RecordingDay[]> 
 // Get tomorrow's recordings (for scheduled notifications)
 async function getTomorrowsRecordings(): Promise<RecordingDay[]> {
   try {
-    const API_URL = process.env.API_URL || 'http://localhost:3001/api';
+    const API_URL = process.env.API_URL || 'https://sigma-hq.onrender.com/api';
     const response = await fetch(`${API_URL}/recording-days`);
     
     if (!response.ok) {
