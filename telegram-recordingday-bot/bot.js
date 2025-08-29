@@ -43,7 +43,7 @@ const dotenv = __importStar(require("dotenv"));
 dotenv.config();
 // Initialize Telegram Bot
 const bot = new node_telegram_bot_api_1.default(process.env.TELEGRAM_BOT_TOKEN, {
-    polling: false, // Disabilito polling per evitare conflitti
+    polling: true, // Attivo polling per test
     filepath: false
 });
 let chatId = null;
@@ -55,7 +55,7 @@ let availableUsers = [];
 // Load clients and users from backend
 async function loadClientsAndUsers() {
     try {
-        const API_URL = process.env.API_URL || 'http://localhost:3001/api';
+        const API_URL = process.env.API_URL || 'https://sigma-hq.onrender.com/api';
         // Load active clients
         const clientsResponse = await fetch(`${API_URL}/clients/active`);
         if (clientsResponse.ok) {
@@ -76,7 +76,7 @@ async function loadClientsAndUsers() {
 // Get next N recording days from API
 async function getNextRecordingDays(limit = 3) {
     try {
-        const API_URL = process.env.API_URL || 'http://localhost:3001/api';
+        const API_URL = process.env.API_URL || 'https://sigma-hq.onrender.com/api';
         const response = await fetch(`${API_URL}/recording-days`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -104,7 +104,7 @@ async function getNextRecordingDays(limit = 3) {
 // Get tomorrow's recordings (for scheduled notifications)
 async function getTomorrowsRecordings() {
     try {
-        const API_URL = process.env.API_URL || 'http://localhost:3001/api';
+        const API_URL = process.env.API_URL || 'https://sigma-hq.onrender.com/api';
         const response = await fetch(`${API_URL}/recording-days`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);

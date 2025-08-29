@@ -7,7 +7,7 @@ dotenv.config();
 
 // Initialize Telegram Bot
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, { 
-  polling: false,  // Disabilito polling per evitare conflitti
+  polling: false,  // Webhook per produzione, polling per locale
   filepath: false
 });
 
