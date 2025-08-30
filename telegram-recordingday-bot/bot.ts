@@ -7,8 +7,25 @@ dotenv.config();
 
 // Initialize Telegram Bot - POLLING MODE per stabilità
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, { 
-  polling: true,  // Polling sempre attivo - funziona perfettamente!
+  polling: {
+    interval: 1000, // Check for new updates every second
+    autoStart: true, // Start polling immediately
+    params: {
+      timeout: 10 // Long polling timeout
+    }
+  },
   filepath: false
+});
+
+// Handle polling errors aggressively
+bot.on('polling_error', (error: Error) => {
+  console.error('🚨 Polling error detected:', error.message);
+  if (error.message.includes('409') || error.message.includes('Conflict')) {
+    console.log('🔄 Detected polling conflict - attempting to restart...');
+    setTimeout(() => {
+      process.exit(1); // Force restart to resolve conflict
+    }, 5000);
+  }
 });
 
 let chatId: number | null = null;
