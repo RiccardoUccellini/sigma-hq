@@ -286,12 +286,29 @@ loadClientsAndUsers().then(() => {
 
 // Express server for Render Web Service (keeps bot alive)
 const app = express();
+
+// Middleware per gestire JSON dal webhook
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
 const PORT = process.env.PORT || 10000;
 
 // Webhook endpoint for Telegram
 app.post('/webhook', (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
+  try {
+    // Validazione del body
+    if (!req.body) {
+      console.log('⚠️  Received empty body');
+      return res.sendStatus(400);
+    }
+    
+    console.log('📨 Webhook update received:', JSON.stringify(req.body, null, 2));
+    bot.processUpdate(req.body);
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('❌ Webhook error:', error);
+    res.sendStatus(500);
+  }
 });
 
 app.get('/', (req, res) => {
