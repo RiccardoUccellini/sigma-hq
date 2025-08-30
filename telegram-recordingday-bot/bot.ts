@@ -61,19 +61,40 @@ let availableUsers: any[] = [];
 async function loadClientsAndUsers() {
   try {
     const API_URL = process.env.API_URL || 'https://sigma-hq.onrender.com/api';
+    console.log(`🔄 Loading data from: ${API_URL}`);
     
-    // Load active clients
-    const clientsResponse = await fetch(`${API_URL}/clients/active`);
-    if (clientsResponse.ok) {
-      availableClients = await clientsResponse.json() as any[];
-      console.log(`📊 Loaded ${availableClients.length} active clients`);
+    // Load active clients con timeout e retry
+    try {
+      const clientsResponse = await fetch(`${API_URL}/clients/active`, {
+        headers: { 'User-Agent': 'SIGMA-Bot/1.0' },
+        signal: AbortSignal.timeout(10000) // 10 secondi timeout
+      });
+      if (clientsResponse.ok) {
+        availableClients = await clientsResponse.json() as any[];
+        console.log(`📊 Loaded ${availableClients.length} active clients`);
+      } else {
+        console.log(`⚠️  Clients API returned: ${clientsResponse.status}`);
+      }
+    } catch (clientError) {
+      console.log('⚠️  Could not load clients:', (clientError as Error).message);
+      availableClients = [];
     }
 
     // Load users  
-    const usersResponse = await fetch(`${API_URL}/users`);
-    if (usersResponse.ok) {
-      availableUsers = await usersResponse.json() as any[];
-      console.log(`👥 Loaded ${availableUsers.length} users`);
+    try {
+      const usersResponse = await fetch(`${API_URL}/users`, {
+        headers: { 'User-Agent': 'SIGMA-Bot/1.0' },
+        signal: AbortSignal.timeout(10000)
+      });
+      if (usersResponse.ok) {
+        availableUsers = await usersResponse.json() as any[];
+        console.log(`👥 Loaded ${availableUsers.length} users`);
+      } else {
+        console.log(`⚠️  Users API returned: ${usersResponse.status}`);
+      }
+    } catch (userError) {
+      console.log('⚠️  Could not load users:', (userError as Error).message);
+      availableUsers = [];
     }
   } catch (error) {
     console.error('❌ Error loading clients and users:', error);
