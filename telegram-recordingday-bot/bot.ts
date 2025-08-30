@@ -50,6 +50,9 @@ interface UserSession {
   formData: NewRecordingForm;
 }
 
+// Global constants
+const API_URL = process.env.API_URL || 'https://sigma-hq.onrender.com/api';
+
 // Session storage for form conversations
 const userSessions: { [chatId: string]: UserSession } = {};
 
@@ -60,7 +63,6 @@ let availableUsers: any[] = [];
 // Load clients and users from backend
 async function loadClientsAndUsers() {
   try {
-    const API_URL = process.env.API_URL || 'https://sigma-hq.onrender.com/api';
     console.log(`🔄 Loading data from: ${API_URL}`);
     
     // Load active clients con timeout e retry
@@ -271,6 +273,223 @@ bot.onText(/\/help/, (msg: any) => {
 • 🔄 Real-time database synchronization
 
 This bot will send you notifications about upcoming recording days every morning at 8:00 AM.`, { parse_mode: 'Markdown' });
+});
+
+// /cancel command
+bot.onText(/\/cancel/, (msg: any) => {
+  const currentChatId = msg.chat.id;
+  if (activeFormSessions.has(currentChatId)) {
+    activeFormSessions.delete(currentChatId);
+    bot.sendMessage(currentChatId, '❌ Operation cancelled. You can start over anytime with /add');
+  } else {
+    bot.sendMessage(currentChatId, '❌ No active operation to cancel.');
+  }
+});
+
+// Store for active form sessions
+const activeFormSessions = new Map<number, any>();
+
+// /add command - Start the recording creation process
+bot.onText(/\/add/, async (msg: any) => {
+  const currentChatId = msg.chat.id;
+  
+  // Cancel any existing session
+  if (activeFormSessions.has(currentChatId)) {
+    activeFormSessions.delete(currentChatId);
+  }
+  
+  // Initialize new form session
+  const session = {
+    step: 'client',
+    data: {}
+  };
+  activeFormSessions.set(currentChatId, session);
+  
+  // Send client selection
+  if (availableClients.length === 0) {
+    bot.sendMessage(currentChatId, '❌ No clients available. Please add clients through the website first.');
+    activeFormSessions.delete(currentChatId);
+    return;
+  }
+  
+  let clientOptions = '📋 *Step 1/8 - Select Client:*\n\n';
+  availableClients.forEach((client, index) => {
+    clientOptions += `${index + 1}. ${client.name}\n`;
+  });
+  clientOptions += '\n💡 Reply with the number of your choice (e.g., "1") or /cancel to abort.';
+  
+  bot.sendMessage(currentChatId, clientOptions, { parse_mode: 'Markdown' });
+});
+
+// Handle text messages for form flow
+bot.on('message', async (msg: any) => {
+  const currentChatId = msg.chat.id;
+  const text = msg.text;
+  
+  // Skip if it's a command or no active session
+  if (!text || text.startsWith('/') || !activeFormSessions.has(currentChatId)) {
+    return;
+  }
+  
+  const session = activeFormSessions.get(currentChatId);
+  
+  try {
+    switch (session.step) {
+      case 'client':
+        const clientIndex = parseInt(text) - 1;
+        if (clientIndex >= 0 && clientIndex < availableClients.length) {
+          session.data.client = availableClients[clientIndex].name;
+          session.data.clientId = availableClients[clientIndex]._id;
+          session.step = 'title';
+          bot.sendMessage(currentChatId, `✅ Client selected: *${session.data.client}*\n\n📝 *Step 2/8 - Recording Title:*\nEnter a title for this recording day:`, { parse_mode: 'Markdown' });
+        } else {
+          bot.sendMessage(currentChatId, '❌ Invalid selection. Please enter a number from the list or /cancel');
+        }
+        break;
+        
+      case 'title':
+        session.data.title = text;
+        session.step = 'date';
+        bot.sendMessage(currentChatId, `✅ Title: *${session.data.title}*\n\n📅 *Step 3/8 - Recording Date:*\nEnter the date (DD/MM/YYYY format, e.g., 31/12/2024):`, { parse_mode: 'Markdown' });
+        break;
+        
+      case 'date':
+        // Validate date format
+        const datePattern = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+        if (datePattern.test(text)) {
+          session.data.date = text;
+          session.step = 'startTime';
+          bot.sendMessage(currentChatId, `✅ Date: *${session.data.date}*\n\n🕐 *Step 4/8 - Start Time:*\nEnter start time (HH:MM format, e.g., 09:00):`, { parse_mode: 'Markdown' });
+        } else {
+          bot.sendMessage(currentChatId, '❌ Invalid date format. Please use DD/MM/YYYY (e.g., 31/12/2024)');
+        }
+        break;
+        
+      case 'startTime':
+        const timePattern = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+        if (timePattern.test(text)) {
+          session.data.startTime = text;
+          session.step = 'endTime';
+          bot.sendMessage(currentChatId, `✅ Start time: *${session.data.startTime}*\n\n🕕 *Step 5/8 - End Time:*\nEnter end time (HH:MM format, e.g., 17:00):`, { parse_mode: 'Markdown' });
+        } else {
+          bot.sendMessage(currentChatId, '❌ Invalid time format. Please use HH:MM (e.g., 09:00)');
+        }
+        break;
+        
+      case 'endTime':
+        const endTimePattern = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+        if (endTimePattern.test(text)) {
+          session.data.endTime = text;
+          session.step = 'location';
+          bot.sendMessage(currentChatId, `✅ End time: *${session.data.endTime}*\n\n📍 *Step 6/8 - Location:*\nEnter the recording location:`, { parse_mode: 'Markdown' });
+        } else {
+          bot.sendMessage(currentChatId, '❌ Invalid time format. Please use HH:MM (e.g., 17:00)');
+        }
+        break;
+        
+      case 'location':
+        session.data.location = text;
+        session.step = 'assignedUsers';
+        
+        // Show user selection
+        if (availableUsers.length === 0) {
+          session.data.assignedUsers = [];
+          session.step = 'notes';
+          bot.sendMessage(currentChatId, `✅ Location: *${session.data.location}*\n\n📝 *Step 7/8 - Notes (optional):*\nEnter any notes or press . for none:`, { parse_mode: 'Markdown' });
+        } else {
+          let userOptions = `✅ Location: *${session.data.location}*\n\n👥 *Step 7/8 - Assign Users:*\n\n`;
+          availableUsers.forEach((user, index) => {
+            userOptions += `${index + 1}. ${user.name} (${user.email})\n`;
+          });
+          userOptions += '\n💡 Enter user numbers separated by commas (e.g., "1,3") or "0" for none:';
+          bot.sendMessage(currentChatId, userOptions, { parse_mode: 'Markdown' });
+        }
+        break;
+        
+      case 'assignedUsers':
+        const userIndices = text.split(',').map((n: string) => parseInt(n.trim()) - 1).filter((i: number) => i >= -1 && i < availableUsers.length);
+        if (text === '0') {
+          session.data.assignedUsers = [];
+        } else {
+          session.data.assignedUsers = userIndices.map((i: number) => availableUsers[i]).filter((u: any) => u);
+        }
+        session.step = 'notes';
+        const assignedList = session.data.assignedUsers.length > 0 ? session.data.assignedUsers.map((u: any) => u.name).join(', ') : 'None';
+        bot.sendMessage(currentChatId, `✅ Assigned users: *${assignedList}*\n\n📝 *Step 8/8 - Notes (optional):*\nEnter any notes or press "." for none:`, { parse_mode: 'Markdown' });
+        break;
+        
+      case 'notes':
+        session.data.notes = text === '.' ? '' : text;
+        
+        // Show confirmation
+        const confirmationMsg = `📋 *Recording Day Summary:*
+
+*Client:* ${session.data.client}
+*Title:* ${session.data.title}
+*Date:* ${session.data.date}
+*Time:* ${session.data.startTime} - ${session.data.endTime}
+*Location:* ${session.data.location}
+*Users:* ${session.data.assignedUsers.length > 0 ? session.data.assignedUsers.map((u: any) => u.name).join(', ') : 'None'}
+*Notes:* ${session.data.notes || 'None'}
+
+✅ Confirm creation by typing "YES" or cancel with "NO"`;
+        
+        session.step = 'confirm';
+        bot.sendMessage(currentChatId, confirmationMsg, { parse_mode: 'Markdown' });
+        break;
+        
+      case 'confirm':
+        if (text.toLowerCase() === 'yes') {
+          // Create the recording
+          try {
+            const recordingData = {
+              title: session.data.title,
+              client: session.data.client,
+              clientId: session.data.clientId,
+              date: session.data.date,
+              startTime: session.data.startTime,
+              endTime: session.data.endTime,
+              location: session.data.location,
+              assignedUsers: session.data.assignedUsers.map((u: any) => u._id),
+              notes: session.data.notes,
+              status: 'scheduled',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            
+            const response = await fetch(`${API_URL}/recordings`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(recordingData),
+              signal: AbortSignal.timeout(10000)
+            });
+            
+            if (response.ok) {
+              bot.sendMessage(currentChatId, '🎉 *Recording day created successfully!*\n\nYou can view it on the website or use /next3 to see upcoming recordings.', { parse_mode: 'Markdown' });
+            } else {
+              throw new Error('Failed to create recording');
+            }
+          } catch (error) {
+            console.error('Error creating recording:', error);
+            bot.sendMessage(currentChatId, '❌ Error creating recording. Please try again later or use the website.');
+          }
+          
+          // Clean up session
+          activeFormSessions.delete(currentChatId);
+          
+        } else if (text.toLowerCase() === 'no') {
+          bot.sendMessage(currentChatId, '❌ Recording creation cancelled. Use /add to start over.');
+          activeFormSessions.delete(currentChatId);
+        } else {
+          bot.sendMessage(currentChatId, '❓ Please type "YES" to confirm or "NO" to cancel');
+        }
+        break;
+    }
+  } catch (error) {
+    console.error('Error in form flow:', error);
+    bot.sendMessage(currentChatId, '❌ An error occurred. Please try /add again.');
+    activeFormSessions.delete(currentChatId);
+  }
 });
 
 // Initialize bot and start server
