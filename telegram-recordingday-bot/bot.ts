@@ -292,6 +292,7 @@ const activeFormSessions = new Map<number, any>();
 // /add command - Start the recording creation process
 bot.onText(/\/add/, async (msg: any) => {
   const currentChatId = msg.chat.id;
+  console.log(`📝 User ${currentChatId} requested /add command - starting form process`);
   
   // Cancel any existing session
   if (activeFormSessions.has(currentChatId)) {
@@ -501,6 +502,7 @@ loadClientsAndUsers().then(() => {
   console.log('📱 Send /start to register for notifications');
   console.log('📅 Send /next3 to get the next 3 recording days');
   console.log('➕ Send /add to create a new recording day');
+  console.log('🔧 Bot commands registered: /start, /next3, /add, /cancel, /help');
 });
 
 // Express server for Render Web Service (keeps bot alive)
