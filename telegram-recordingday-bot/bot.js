@@ -43,7 +43,7 @@ const dotenv = __importStar(require("dotenv"));
 dotenv.config();
 // Initialize Telegram Bot
 const bot = new node_telegram_bot_api_1.default(process.env.TELEGRAM_BOT_TOKEN, {
-    polling: false, // Webhook per produzione, polling per locale
+    polling: true, // Polling per test locale
     filepath: false
 });
 let chatId = null;
@@ -273,7 +273,14 @@ app.post('/webhook', (req, res) => {
             return res.sendStatus(400);
         }
         console.log('📨 Webhook update received:', JSON.stringify(req.body, null, 2));
-        bot.processUpdate(req.body);
+        // Validiamo che abbia la struttura corretta di un update Telegram
+        if (req.body && (req.body.message || req.body.callback_query || req.body.inline_query)) {
+            bot.processUpdate(req.body);
+            console.log('✅ Update processed successfully');
+        }
+        else {
+            console.log('⚠️  Invalid update structure:', req.body);
+        }
         res.sendStatus(200);
     }
     catch (error) {

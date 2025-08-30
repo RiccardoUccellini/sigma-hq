@@ -5,9 +5,9 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-// Initialize Telegram Bot
+// Initialize Telegram Bot - POLLING MODE per stabilità
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, { 
-  polling: false,  // Webhook per produzione, polling per locale
+  polling: true,  // Polling sempre attivo - funziona perfettamente!
   filepath: false
 });
 
@@ -293,22 +293,11 @@ app.use(express.urlencoded({ extended: true }));
 
 const PORT = process.env.PORT || 10000;
 
-// Webhook endpoint for Telegram
+// Webhook endpoint for Telegram - DISABILITATO (usiamo polling)
 app.post('/webhook', (req, res) => {
-  try {
-    // Validazione del body
-    if (!req.body) {
-      console.log('⚠️  Received empty body');
-      return res.sendStatus(400);
-    }
-    
-    console.log('📨 Webhook update received:', JSON.stringify(req.body, null, 2));
-    bot.processUpdate(req.body);
-    res.sendStatus(200);
-  } catch (error) {
-    console.error('❌ Webhook error:', error);
-    res.sendStatus(500);
-  }
+  // Webhook non più utilizzato - risponde solo OK
+  console.log('⚠️  Webhook call ignored - using polling mode');
+  res.sendStatus(200);
 });
 
 app.get('/', (req, res) => {
@@ -330,20 +319,13 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Set webhook on startup
+// Start server - POLLING MODE (no webhook setup)
 app.listen(PORT, async () => {
   console.log(`🌐 Bot web service running on port ${PORT}`);
+  console.log(`🤖 Bot using POLLING mode - stable and reliable!`);
   
-  try {
-    const webhookUrl = `https://sigma-hq-bot.onrender.com/webhook`;
-    await bot.setWebHook(webhookUrl);
-    console.log(`🔗 Webhook set to: ${webhookUrl}`);
-  } catch (error) {
-    console.error('❌ Error setting webhook:', error);
-    // Fallback to polling if webhook fails
-    console.log('🔄 Falling back to polling...');
-    bot.startPolling();
-  }
+  // Nessun webhook - polling è già attivo dalla configurazione del bot
+  console.log(`✅ Bot ready and listening for messages via polling`);
 });
 
 // Scheduled notifications - Every day at 8:00 AM
