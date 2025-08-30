@@ -5,6 +5,9 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Force restart - Updated at 30/08/2025 11:41
+console.log('🚀 SIGMA HQ Server starting - Force restart for bot functionality...');
+
 // Middleware
 app.use(cors({
   origin: [
